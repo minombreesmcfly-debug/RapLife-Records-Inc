@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a fan, artist, or admin in the system.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["fan", "artist", "admin"] },
+        "bio": { "type": "string" },
+        "spotifyUrl": { "type": "string" },
+        "appleMusicUrl": { "type": "string" },
+        "instagramUrl": { "type": "string" },
+        "isPinned": { "type": "boolean" },
+        "pinnedOrder": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Track": {
+      "title": "Track",
+      "description": "A music track or radio interstitial.",
+      "type": "object",
+      "properties": {
+        "artistId": { "type": "string" },
+        "artistName": { "type": "string" },
+        "title": { "type": "string" },
+        "audioUrl": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "isRadioInterstitial": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "playCount": { "type": "number" }
+      },
+      "required": ["artistId", "title", "audioUrl"]
+    },
+    "NewsEvent": {
+      "title": "News or Event",
+      "description": "News updates or upcoming events from the label.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "type": { "type": "string", "enum": ["news", "event"] },
+        "eventDate": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "content", "type"]
+    },
+    "StudioMasterpiece": {
+      "title": "Studio Masterpiece",
+      "description": "A customized outfit designed for a photo using virtual AI stylist.",
+      "type": "object",
+      "properties": {
+        "image": { "type": "string" },
+        "originalOutfit": { "type": "string" },
+        "outfitPrompt": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["image", "outfitPrompt", "createdBy"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "Collection of user profiles."
+    },
+    "tracks": {
+      "schema": "Track",
+      "description": "Collection of uploaded songs and radio clips."
+    },
+    "news": {
+      "schema": "NewsEvent",
+      "description": "Label and artist news/events."
+    },
+    "studioMasterpieces": {
+      "schema": "StudioMasterpiece",
+      "description": "Virtual customized outfit designs saved by admins and premium artists."
+    }
+  }
+}

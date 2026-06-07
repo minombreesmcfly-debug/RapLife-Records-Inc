@@ -1,0 +1,114 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'Minombreesmcfly@gmail.com' ||
+        request.auth.token.email == 'minombreesmcfly@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // User Validation
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             data.role in ['fan', 'artist'] &&
+             (!('bio' in data) || data.bio is string) &&
+             (!('photoURL' in data) || data.photoURL is string);
+    }
+
+    match /users/{userId} {
+      allow get: if true;
+      allow list: if true; // Publicly list artists/profiles
+      
+      allow create: if isAdmin() || (isSignedIn() && isValidUser(request.resource.data) && userId == request.auth.uid);
+      
+      allow update: if (isAdmin() || isOwner(userId)) && (
+        // Admin can update anything (e.g. isPinned)
+        isAdmin() || (
+          // Owner can update everything EXCEPT role and isPinned
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL', 'bio', 'spotifyUrl', 'appleMusicUrl', 'instagramUrl', 'points', 'highScore'])
+        )
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    // Track Validation
+    function isValidTrack(data) {
+      return data.keys().hasAll(['artistId', 'title', 'audioUrl']) &&
+             data.artistId is string &&
+             data.title is string && data.title.size() <= 200 &&
+             data.audioUrl is string && data.audioUrl.size() <= 1000;
+    }
+
+    match /tracks/{trackId} {
+      allow read: if true; // Public radio/music
+      
+      allow create: if (isSignedIn() && isValidTrack(request.resource.data) && (
+        // Must be an artist to upload music
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'artist' ||
+        isAdmin()
+      ));
+      
+      allow update: if isAdmin() || (isSignedIn() && resource.data.artistId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.artistId == request.auth.uid);
+    }
+
+    // News/Events Validation
+    match /news/{newsId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Configuration Settings (e.g., Spotify, Turntable)
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(configId);
+    }
+
+    // Studio Masterpieces Validation
+    function isValidStudioMasterpiece(data) {
+      return data.keys().hasAll(['image', 'outfitPrompt', 'createdBy']) &&
+             data.createdBy == request.auth.uid &&
+             data.image is string &&
+             data.outfitPrompt is string && data.outfitPrompt.size() <= 4000000 && // Base64 image sizes can be massive, but let's allow ample size for the base64 or prompt
+             (!('originalOutfit' in data) || (data.originalOutfit is string && data.originalOutfit.size() <= 2000)) &&
+             (!('createdByName' in data) || (data.createdByName is string && data.createdByName.size() <= 200)) &&
+             (!('createdAt' in data) || data.createdAt == request.time);
+    }
+
+    match /studioMasterpieces/{masterpieceId} {
+      allow get, list, delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+      allow get, list, delete: if isAdmin();
+      
+      allow create: if isSignedIn() && isValidStudioMasterpiece(request.resource.data);
+    }
+  }
+}
