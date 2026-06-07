@@ -2,9 +2,10 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { MusicProvider, useMusic } from './context/MusicContext';
-import { Home, User, Radio, Gamepad2, Settings, LogIn, Mic2, Heart, PlusCircle, ShieldCheck, Play, Upload, Volume2, VolumeX, Shirt } from 'lucide-react';
+import { Home, User, Radio, Gamepad2, Settings, LogIn, LogOut, Mic2, Heart, PlusCircle, ShieldCheck, Play, Upload, Volume2, VolumeX, Shirt, X, AlertTriangle, ExternalLink, Compass, Monitor, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { signInWithGoogle } from './lib/firebase';
+import { signInWithGoogle, signInWithGoogleRedirect, getRedirectResultHelper, logoutUser } from './lib/firebase';
+import firebaseConfig from '../firebase-applet-config.json';
 
 // Views
 import HomeView from './views/Home';
@@ -155,6 +156,52 @@ const LandingPage = () => (
 const AppContent = () => {
   const { user, profile, isAdmin } = useAuth();
   const { currentTrack, isMuted, toggleMute } = useMusic();
+  const [loginError, setLoginError] = React.useState<any | null>(null);
+  const [isLoginPending, setIsLoginPending] = React.useState(false);
+  const [showLoginModal, setShowLoginModal] = React.useState(false);
+
+  // Check for redirect sign-in results on app mount
+  React.useEffect(() => {
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResultHelper();
+        if (result) {
+          console.log("Successfully logged in via redirect! User:", result.user);
+        }
+      } catch (err: any) {
+        console.error("Firebase redirect login error on load:", err);
+        setLoginError(err);
+      }
+    };
+    checkRedirect();
+  }, []);
+
+  const handleLoginPopup = async () => {
+    setLoginError(null);
+    setIsLoginPending(true);
+    setShowLoginModal(false);
+    try {
+      await signInWithGoogle();
+    } catch (err: any) {
+      console.error("Firebase Popup Login Error details:", err);
+      setLoginError(err);
+    } finally {
+      setIsLoginPending(false);
+    }
+  };
+
+  const handleLoginRedirect = async () => {
+    setLoginError(null);
+    setIsLoginPending(true);
+    setShowLoginModal(false);
+    try {
+      await signInWithGoogleRedirect();
+    } catch (err: any) {
+      console.error("Firebase Redirect Login Error details:", err);
+      setLoginError(err);
+      setIsLoginPending(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-brand-dark text-white font-sans selection:bg-brand-yellow selection:text-black overflow-x-hidden boombox-texture pb-20 md:pb-8">
@@ -223,20 +270,37 @@ const AppContent = () => {
                 </Link>
               )}
               {user ? (
-                <Link to="/settings" className="flex items-center gap-1.5 md:gap-3 bg-black/30 p-1 md:p-1.5 md:pr-3.5 rounded-lg md:rounded-2xl border-2 md:border-4 border-black group">
-                  <img src={user.photoURL || ''} className="w-5 h-5 md:w-9 md:h-9 rounded-lg border border-brand-yellow group-hover:scale-110 transition-transform" alt="avatar" />
-                  <div className="hidden sm:block text-left">
-                    <p className="text-[8px] md:text-[9px] font-black uppercase italic leading-none">{user.displayName?.split(' ')[0]}</p>
-                    <p className="text-[7px] text-brand-yellow font-bold uppercase tracking-widest">{profile?.role || (isAdmin ? 'Admin' : 'Fan')}</p>
-                  </div>
-                </Link>
+                <div className="flex items-center gap-1.5 md:gap-3">
+                  <Link to="/settings" className="flex items-center gap-1.5 md:gap-3 bg-black/30 p-1 md:p-1.5 md:pr-3.5 rounded-lg md:rounded-2xl border-2 md:border-4 border-black group">
+                    <img src={user.photoURL || ''} className="w-5 h-5 md:w-9 md:h-9 rounded-lg border border-brand-yellow group-hover:scale-110 transition-transform" alt="avatar" />
+                    <div className="hidden sm:block text-left">
+                      <p className="text-[8px] md:text-[9px] font-black uppercase italic leading-none">{user.displayName?.split(' ')[0]}</p>
+                      <p className="text-[7px] text-brand-yellow font-bold uppercase tracking-widest">{profile?.role || (isAdmin ? 'Admin' : 'Fan')}</p>
+                    </div>
+                  </Link>
+                  <button 
+                    onClick={() => logoutUser()} 
+                    className="chrome-button px-2.5 py-1.5 md:px-4 md:py-3 rounded-lg md:rounded-xl text-black font-black uppercase text-[8px] md:text-[10px] shadow-lg hover:scale-105 transition-all flex items-center gap-1 cursor-pointer"
+                    title="Cerrar Sesión"
+                  >
+                    <LogOut size={11} />
+                    <span className="hidden md:inline">SALIR</span>
+                  </button>
+                </div>
               ) : (
-                <button onClick={signInWithGoogle} className="chrome-button px-3.5 py-1.5 md:px-5 md:py-3 rounded-lg md:rounded-xl text-black font-black uppercase text-[9px] md:text-xs shadow-lg hover:scale-105 transition-all">LOGIN</button>
+                <button 
+                  onClick={() => setShowLoginModal(true)} 
+                  disabled={isLoginPending}
+                  className="chrome-button px-3.5 py-1.5 md:px-5 md:py-3 rounded-lg md:rounded-xl text-black font-black uppercase text-[9px] md:text-xs shadow-lg hover:scale-105 transition-all disabled:opacity-50"
+                >
+                  {isLoginPending ? 'LOGGING...' : 'LOGIN'}
+                </button>
               )}
             </div>
           </div>
         </div>
       </header>
+
 
       {/* NEW RADIO STRIP */}
       <RadioStrip />
@@ -263,6 +327,204 @@ const AppContent = () => {
          <div className="absolute top-20 left-10 w-96 h-96 bg-brand-yellow rounded-full blur-[150px]" />
          <div className="absolute bottom-20 right-10 w-96 h-96 bg-brand-yellow rounded-full blur-[150px]" />
       </div>
+
+      {/* LOGIN METHOD SELECTION MODAL */}
+      <AnimatePresence>
+        {showLoginModal && (
+          <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-[999] backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-boombox-gray border-4 border-black p-6 rounded-3xl max-w-md w-full shadow-2xl relative text-left boombox-texture font-sans"
+            >
+              <div className="absolute top-3 left-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+              <div className="absolute top-3 right-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+              <div className="absolute bottom-3 left-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+              <div className="absolute bottom-3 right-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+
+              <div className="flex items-center gap-3 border-b-2 border-black pb-3 mb-4">
+                <div className="p-2 bg-brand-yellow text-black leading-none flex items-center justify-center rounded-lg pr-2.5">
+                  <LogIn size={20} className="text-black" />
+                </div>
+                <h3 className="text-xl font-black italic uppercase tracking-tighter text-brand-yellow glow-yellow">
+                  CONECTAR CUENTA
+                </h3>
+                <button 
+                  onClick={() => setShowLoginModal(false)}
+                  className="ml-auto text-gray-400 hover:text-white p-1 hover:bg-black/20 rounded-md transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-xs text-gray-300 font-semibold leading-relaxed">
+                  Para poder subir canciones, votar y entrar al probador o vestuario, conéctate con tu cuenta de Google. Elige el método más adecuado para tu dispositivo:
+                </p>
+
+                <div className="space-y-3">
+                  {/* OPTION 1: POPUP */}
+                  <button 
+                    onClick={handleLoginPopup}
+                    className="w-full text-left p-3.5 bg-black/40 hover:bg-black/60 border-2 border-black hover:border-brand-yellow rounded-xl transition-all group flex items-start gap-3 cursor-pointer"
+                  >
+                    <div className="p-2 bg-brand-yellow/10 group-hover:bg-brand-yellow text-brand-yellow group-hover:text-black rounded-lg transition-colors mt-0.5">
+                      <Monitor size={18} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black uppercase text-white group-hover:text-brand-yellow transition-colors tracking-wider">
+                        Método 1: Ventana Pop-Up
+                      </div>
+                      <div className="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-tight">
+                        Rápido en computadora. Abre una pestaña emergente integrada.
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* OPTION 2: REDIRECT */}
+                  <button 
+                    onClick={handleLoginRedirect}
+                    className="w-full text-left p-3.5 bg-brand-yellow/5 hover:bg-brand-yellow/10 border-2 border-brand-yellow/45 hover:border-brand-yellow rounded-xl transition-all group flex items-start gap-3 cursor-pointer"
+                  >
+                    <div className="p-2 bg-brand-yellow text-black rounded-lg transition-colors mt-0.5">
+                      <Smartphone size={18} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black uppercase text-brand-yellow transition-colors tracking-wider flex items-center gap-1.5">
+                        Método 2: Redirección
+                        <span className="text-[8px] bg-brand-yellow text-black px-1.5 py-0.5 rounded-full font-black font-sans uppercase animate-pulse">Recomendado</span>
+                      </div>
+                      <div className="text-[10px] text-gray-300 mt-1 uppercase font-bold tracking-tight">
+                        Evita bloqueos de safari/iPhone, modo incógnito y cookies de terceros de Vercel.
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                <div className="text-[9px] text-gray-500 font-semibold leading-normal uppercase border-t border-black/50 pt-3">
+                  ⚠️ NOTA VERCEL: Recuerda tener agregado el dominio de Vercel en "Authorized Domains" dentro de Firebase Console.
+                </div>
+
+                <button 
+                  onClick={() => setShowLoginModal(false)}
+                  className="w-full py-2.5 text-center rounded-xl bg-black/40 text-[10px] font-black uppercase tracking-wider text-gray-400 hover:text-white hover:bg-black/65 transition-colors border-2 border-black"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* AUTH ERROR DIAGNOSTIC MODAL */}
+      <AnimatePresence>
+        {loginError && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[999] backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-boombox-gray border-4 border-black p-6 rounded-3xl max-w-lg w-full shadow-2xl relative text-left boombox-texture font-sans"
+            >
+              {/* Retro decorative bolts */}
+              <div className="absolute top-3 left-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+              <div className="absolute top-3 right-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+              <div className="absolute bottom-3 left-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+              <div className="absolute bottom-3 right-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+
+              <div className="flex items-center gap-3 border-b-2 border-black pb-3 mb-4">
+                <div className="p-2 bg-red-500 rounded-lg text-black leading-none flex items-center justify-center">
+                  <AlertTriangle size={20} />
+                </div>
+                <h3 className="text-xl font-black italic uppercase tracking-tighter text-red-500 glow-red">
+                  PROBLEMA CON GOOGLE LOGIN
+                </h3>
+                <button 
+                  onClick={() => setLoginError(null)}
+                  className="ml-auto text-gray-400 hover:text-white p-1 hover:bg-black/20 rounded-md transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {loginError?.code === 'auth/unauthorized-domain' || (loginError?.message && loginError.message.includes('unauthorized-domain')) ? (
+                  <>
+                    <p className="text-xs uppercase font-black tracking-wider text-brand-yellow">
+                      ⚠️ ¡Falta autorizar este dominio en tu Consola Firebase!
+                    </p>
+                    <div className="space-y-2 text-xs text-gray-300 font-medium leading-relaxed">
+                      <p>
+                        Para seguridad de Firebase Auth, debes configurar tus dominios oficiales para que se permita el inicio de sesión.
+                      </p>
+                      <div className="bg-black/40 p-3 rounded-lg border border-black font-mono text-[11px] text-brand-green select-all text-center">
+                        {window.location.hostname}
+                      </div>
+                      <p className="font-bold text-white mt-2 mb-1">Pasos para solucionarlo:</p>
+                      <ol className="list-decimal pl-4 space-y-1.5 text-gray-400">
+                        <li>Ir a tu <a href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`} target="_blank" rel="noopener noreferrer" className="text-brand-yellow hover:underline inline-flex items-center gap-1 font-bold">Consola Firebase <ExternalLink size={10} /></a>.</li>
+                        <li>Entrar en <strong>Authentication &gt; Settings &gt; Authorized domains</strong> (Dominios autorizados).</li>
+                        <li>Hacer clic en <strong>Add domain</strong> (Añadir dominio).</li>
+                        <li>Pegar exactamente el dominio arriba indicado (<strong>{window.location.hostname}</strong>).</li>
+                        <li>Guardar y volver a intentar en 1 minuto.</li>
+                      </ol>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs uppercase font-black tracking-wider text-brand-yellow">
+                      ⚠️ Bloqueo de Cookies o Ventana emergente bloqueada
+                    </p>
+                    <div className="space-y-2 text-xs text-gray-300 font-medium leading-relaxed">
+                      <p>
+                        El inicio de sesión de Firebase por ventana emergente (Popup) se cerró o fue bloqueado por tu navegador. Esto suele ser por:
+                      </p>
+                      <ul className="list-disc pl-4 space-y-1 text-gray-400">
+                        <li>Sistemas automáticos de bloqueo de ventanas emergentes (Pop-up blockers).</li>
+                        <li>Modo incógnito estricto (bloqueo de cookies de terceros).</li>
+                        <li>Navegadores móviles (Safari de iOS o Chrome en Android).</li>
+                      </ul>
+                      <p className="font-bold text-white mt-2">✨ ¡SOLUCIÓN RÁPIDA / RECOMENDADA! ✨</p>
+                      <p className="text-gray-200">
+                        Prueba el <strong>Método de Redirección</strong> haciendo clic abajo. Redirigirá la misma pestaña de forma segura, eludiendo cookies externas y bloqueos.
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                <div className="text-[10px] font-mono text-gray-500 border-t border-black pt-3 mt-2 overflow-x-auto whitespace-pre">
+                  Código de Firebase: {loginError?.code || 'Desconocido'}{'\n'}
+                  Mensaje: {loginError?.message || String(loginError)}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
+                  <button 
+                    onClick={() => setLoginError(null)}
+                    className="py-3 text-center rounded-xl bg-black/40 text-xs font-black uppercase tracking-wider text-gray-400 hover:text-white hover:bg-black/65 transition-colors border-2 border-black"
+                  >
+                    Cerrar Detalle
+                  </button>
+                  <button 
+                    onClick={handleLoginPopup}
+                    className="py-3 text-center rounded-xl bg-boombox-gray text-white font-black uppercase text-xs hover:bg-black border-2 border-black transition-transform active:scale-95"
+                  >
+                    Usar Popup
+                  </button>
+                  <button 
+                    onClick={handleLoginRedirect}
+                    className="py-3 text-center rounded-xl bg-brand-yellow hover:bg-brand-yellow/85 text-black font-black uppercase text-xs shadow-md transition-all font-sans border-2 border-black flex items-center justify-center gap-1.5 animate-pulse"
+                  >
+                    <Smartphone size={13} />
+                    Usar Redirección
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
