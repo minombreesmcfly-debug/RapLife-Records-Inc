@@ -1283,24 +1283,27 @@ const GameView = () => {
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="absolute inset-0 bg-red-950/85 backdrop-blur-md flex flex-col items-center justify-center p-3 sm:p-6 text-center z-10"
+                className="absolute inset-0 bg-red-950/90 backdrop-blur-md flex flex-col items-center justify-center p-2 sm:p-6 text-center z-10"
               >
-                <h2 className="text-3xl sm:text-5xl font-black italic uppercase tracking-tighter text-white mb-0.5 animate-pulse">FAIL</h2>
-                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-widest mb-3 text-white/70">LA CALLE NO PERDONA</p>
-                <div className="bg-black/60 px-5 py-1.5 sm:px-8 sm:py-3 rounded-2xl border-2 border-white/15 mb-4">
-                  <p className="text-[8px] font-bold text-gray-500 uppercase mb-0.5">SCORE</p>
-                  <p className="text-xl sm:text-2xl font-black italic font-mono text-brand-yellow leading-none">{score}</p>
+                <h2 className="text-2xl sm:text-5xl font-black italic uppercase tracking-tighter text-white mb-0.5 animate-pulse">FAIL</h2>
+                <p className="text-[8px] sm:text-xs font-bold uppercase tracking-widest mb-1.5 sm:mb-3 text-white/70">LA CALLE NO PERDONA</p>
+                <div className="bg-black/60 px-4 py-1 sm:px-8 sm:py-3 rounded-xl border-2 border-white/15 mb-2.5 sm:mb-4">
+                  <p className="text-[7px] sm:text-[8px] font-bold text-gray-500 uppercase mb-0.5">SCORE</p>
+                  <p className="text-lg sm:text-2xl font-black italic font-mono text-brand-yellow leading-none">{score}</p>
                 </div>
-                <div className="flex flex-row gap-2 w-full max-w-xs sm:max-w-md justify-center">
-                  <button onClick={startNewGame} className="chrome-button px-4 py-2 sm:px-6 sm:py-3 rounded-xl text-black font-black uppercase tracking-widest text-[9.5px] sm:text-xs flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(248,251,2,0.2)]">
-                    <RotateCcw size={12} /> REINTENTAR
+                <div className="flex flex-row gap-1.5 w-full max-w-xs sm:max-w-md justify-center">
+                  <button 
+                    onClick={startNewGame} 
+                    className="chrome-button px-3 py-1.5 sm:px-6 sm:py-3 rounded-lg text-black font-black uppercase tracking-widest text-[8.5px] sm:text-xs flex items-center justify-center gap-1 shadow-[0_0_15px_rgba(248,251,2,0.2)] active:scale-95 transition-all"
+                  >
+                    <RotateCcw size={10} /> REINTENTAR
                   </button>
                   <button 
                     onClick={() => {
                       setGameState('idle');
                       gameStateRef.current = 'idle';
                     }} 
-                    className="bg-black/80 hover:bg-black/105 text-white border-2 border-white/20 hover:border-brand-yellow/80 rounded-xl px-4 py-2 sm:px-6 sm:py-3 font-black uppercase tracking-widest text-[9.5px] sm:text-xs flex items-center justify-center gap-1.5 transition-all"
+                    className="bg-black/80 hover:bg-black/105 text-white border border-white/20 hover:border-brand-yellow/80 rounded-lg px-2.5 py-1.5 sm:px-6 sm:py-3 font-black uppercase tracking-widest text-[8.5px] sm:text-xs flex items-center justify-center gap-1 transition-all active:scale-95"
                   >
                     CAMBIAR LEYENDA
                   </button>

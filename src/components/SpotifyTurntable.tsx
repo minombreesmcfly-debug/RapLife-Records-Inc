@@ -4,7 +4,7 @@ import {
   Play, Pause, Sliders, Radio, Music, Volume2, Disc, 
   VolumeX, Sparkles, ChevronRight, ChevronLeft, Info, Mic, MicOff, 
   Settings, AlertCircle, Check, HelpCircle, Share2, 
-  ArrowDownRight, Instagram, X 
+  ArrowDownRight, Instagram, X, Square, Circle, Download
 } from 'lucide-react';
 import { collection, query, orderBy, limit, getDocs, addDoc, doc, where } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
@@ -215,6 +215,23 @@ export default function SpotifyTurntable() {
   const [appPitchMessage, setAppPitchMessage] = useState('');
   const [appSubmitting, setAppSubmitting] = useState(false);
   const [appSuccess, setAppSuccess] = useState(false);
+
+  // --- VOCAL PRESETS DETAILED MODAL STATE ---
+  const [showPresetsModal, setShowPresetsModal] = useState(false);
+
+  // --- REAL-TIME RECORDING ENGINE STATES ---
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedBuffer, setRecordedBuffer] = useState<AudioBuffer | null>(null);
+  const [isPlayingRecording, setIsPlayingRecording] = useState(false);
+  const [monitorActive, setMonitorActive] = useState(true); // Escucharse en vivo (Monitorización)
+  const [isBouncing, setIsBouncing] = useState(false);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<any>(null);
+  const playbackSourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
 
   // Audio refs for Web Audio API graph
   const instrumentalAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -473,6 +490,16 @@ export default function SpotifyTurntable() {
   const stopVocalProcessing = () => {
     setMicActive(false);
     
+    // Stop recording if active
+    if (isRecording) {
+      handleStopRecording();
+    }
+    
+    // Stop playback of recording if active
+    if (isPlayingRecording) {
+      handleStopPlayback();
+    }
+    
     // Stop tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -497,6 +524,228 @@ export default function SpotifyTurntable() {
     }
   };
 
+  // --- REAL-TIME DRY VOCAL RECORDING & FX TUNING ACTIONS ---
+  const handleStartRecording = async () => {
+    try {
+      setRecordedBlob(null);
+      setRecordedBuffer(null);
+      setIsPlayingRecording(false);
+      playbackSourceNodeRef.current?.stop();
+
+      // Ensure vocal processing is active
+      if (!micActive) {
+        await startVocalProcessing();
+      }
+
+      const stream = localStreamRef.current;
+      if (!stream) {
+        throw new Error("No microphone stream available.");
+      }
+
+      // Record DRY (raw) microphone audio so users can adjust/change slider effects post-recording!
+      const options = { mimeType: 'audio/webm' };
+      let rec: MediaRecorder;
+      try {
+        rec = new MediaRecorder(stream, options);
+      } catch (err) {
+        rec = new MediaRecorder(stream);
+      }
+
+      mediaRecorderRef.current = rec;
+      recordedChunksRef.current = [];
+
+      rec.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          recordedChunksRef.current.push(e.data);
+        }
+      };
+
+      rec.onstop = async () => {
+        const docBlob = new Blob(recordedChunksRef.current, { type: 'audio/webm;codecs=opus' });
+        setRecordedBlob(docBlob);
+
+        if (audioContextRef.current) {
+          const arrBuf = await docBlob.arrayBuffer();
+          audioContextRef.current.decodeAudioData(arrBuf, (decodedBuf) => {
+            setRecordedBuffer(decodedBuf);
+          }, (decErr) => {
+            console.error("Decoding error for recorded chunk:", decErr);
+          });
+        }
+      };
+
+      rec.start(250);
+      setIsRecording(true);
+      setRecordingSeconds(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+
+    } catch (err: any) {
+      console.error("Failed to start voice recorder:", err);
+      setMicErrorMsg("Error al iniciar el grabador de RapLife Studio: " + err.message);
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  };
+
+  const handleStartPlayback = () => {
+    if (!recordedBuffer || !audioContextRef.current) return;
+
+    handleStopPlayback();
+
+    const ctx = audioContextRef.current;
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+
+    const sourceNode = ctx.createBufferSource();
+    sourceNode.buffer = recordedBuffer;
+
+    // Connect right to the front-entry point of the active vocal effects path
+    if (analyserInputRef.current) {
+      sourceNode.connect(analyserInputRef.current);
+    } else if (micGainNodeRef.current) {
+      sourceNode.connect(micGainNodeRef.current);
+    } else {
+      sourceNode.connect(ctx.destination);
+    }
+
+    sourceNode.onended = () => {
+      setIsPlayingRecording(false);
+    };
+
+    sourceNode.start(0);
+    playbackSourceNodeRef.current = sourceNode;
+    setIsPlayingRecording(true);
+  };
+
+  const handleStopPlayback = () => {
+    if (playbackSourceNodeRef.current) {
+      try {
+        playbackSourceNodeRef.current.stop();
+      } catch (err) {
+        // Safe ended
+      }
+      playbackSourceNodeRef.current = null;
+    }
+    setIsPlayingRecording(false);
+  };
+
+  const handleDownloadWithEffects = async () => {
+    if (!recordedBuffer) return;
+    setIsBouncing(true);
+
+    try {
+      const duration = recordedBuffer.duration;
+      const sampleRate = recordedBuffer.sampleRate;
+
+      // Render the vocal *with* all processing sliders applied inside OfflineAudioContext!
+      const offlineCtx = new OfflineAudioContext(2, sampleRate * duration, sampleRate);
+
+      const vocalSourceNode = offlineCtx.createBufferSource();
+      vocalSourceNode.buffer = recordedBuffer;
+
+      const inputGainNode = offlineCtx.createGain();
+      inputGainNode.gain.value = micGain / 100;
+
+      const lowEQFilter = offlineCtx.createBiquadFilter();
+      lowEQFilter.type = 'lowshelf';
+      lowEQFilter.frequency.value = 200;
+      lowEQFilter.gain.value = lowEQ;
+
+      const midEQFilter = offlineCtx.createBiquadFilter();
+      midEQFilter.type = 'peaking';
+      midEQFilter.frequency.value = 1500;
+      midEQFilter.Q.value = 1.0;
+      midEQFilter.gain.value = midEQ;
+
+      const highEQFilter = offlineCtx.createBiquadFilter();
+      highEQFilter.type = 'highshelf';
+      highEQFilter.frequency.value = 6000;
+      highEQFilter.gain.value = highEQ;
+
+      const distNode = offlineCtx.createWaveShaper();
+      distNode.curve = generateDistortionCurve(distortionAmount);
+      distNode.oversample = '4x';
+
+      // Delay Node setup
+      const dNode = offlineCtx.createDelay(1.5);
+      dNode.delayTime.value = 0.35;
+      const dGainNode = offlineCtx.createGain();
+      dGainNode.gain.value = delayWet / 100;
+
+      const dFeedback = offlineCtx.createGain();
+      dFeedback.gain.value = 0.3;
+      dNode.connect(dFeedback);
+      dFeedback.connect(dNode);
+
+      // Reverb Node setup
+      const rNode = offlineCtx.createConvolver();
+      rNode.buffer = getImpulseResponseBuffer(offlineCtx as any, 1.8, 2.5);
+      const rGainNode = offlineCtx.createGain();
+      rGainNode.gain.value = reverbWet / 100;
+
+      const outputSubmixNode = offlineCtx.createGain();
+      outputSubmixNode.gain.value = 1.0; // max headroom output
+
+      // Connect DSP graph
+      vocalSourceNode.connect(inputGainNode);
+      inputGainNode.connect(lowEQFilter);
+      lowEQFilter.connect(midEQFilter);
+      midEQFilter.connect(highEQFilter);
+      highEQFilter.connect(distNode);
+
+      // Dry sound to submix
+      distNode.connect(outputSubmixNode);
+
+      // Delay path
+      distNode.connect(dNode);
+      dNode.connect(dGainNode);
+      dGainNode.connect(outputSubmixNode);
+
+      // Reverb path
+      distNode.connect(rNode);
+      rNode.connect(rGainNode);
+      rGainNode.connect(outputSubmixNode);
+
+      // Direct to offline output rendering target
+      outputSubmixNode.connect(offlineCtx.destination);
+
+      vocalSourceNode.start(0);
+      const renderedBuffer = await offlineCtx.startRendering();
+
+      // Encode output AudioBuffer into CD-fidelity WAV blob
+      const wavBlob = audioBufferToWav(renderedBuffer);
+      const downloadUrl = URL.createObjectURL(wavBlob);
+
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `raplife_studio_${currentPresetId}_vocal.wav`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 10000);
+
+    } catch (err) {
+      console.error("Master offline bounce error:", err);
+      alert("Error al masterizar y exportar la grabación.");
+    } finally {
+      setIsBouncing(false);
+    }
+  };
+
   // --- DIRECT SYNC OF LIVE SLIDERS INTO RUNNING DSP GRAPH ---
   useEffect(() => {
     if (micGainNodeRef.current) {
@@ -506,9 +755,9 @@ export default function SpotifyTurntable() {
 
   useEffect(() => {
     if (mainVocalMixGainNodeRef.current) {
-      mainVocalMixGainNodeRef.current.gain.value = monitorVolume / 100;
+      mainVocalMixGainNodeRef.current.gain.value = monitorActive ? (monitorVolume / 100) : 0;
     }
-  }, [monitorVolume]);
+  }, [monitorVolume, monitorActive]);
 
   useEffect(() => {
     if (eqLowNodeRef.current) {
@@ -731,9 +980,9 @@ export default function SpotifyTurntable() {
               {/* LCD CONSOLE HEADER & LED STATUS */}
               <div className="w-full flex justify-between items-center px-1 border-b border-white/5 pb-2.5">
                 <div className="flex items-center gap-2">
-                  <span className={`w-2.5 h-2.5 rounded-full ${micActive ? 'bg-brand-green animate-pulse shadow-[0_0_8px_#39ff14]' : 'bg-red-600 shadow-[0_0_8px_#ff0000]'} transition-colors duration-300`} />
+                  <span className={`w-2.5 h-2.5 rounded-full ${micActive ? 'bg-brand-green animate-pulse shadow-[0_0_8px_#39ff14]' : 'bg-red-655 shadow-[0_0_8px_rgba(239,68,68,0.4)]'} transition-colors duration-300`} />
                   <span className="text-[10px] font-mono tracking-widest uppercase text-neutral-400 font-black">
-                    {micActive ? 'MICROFONO CAPTURANDO' : 'ESTUDIO EN ESPERA'}
+                    {micActive ? 'CONSOLA GRABANDO / CAPTURANDO' : 'RAPLIFE STUDIO'}
                   </span>
                 </div>
                 <div className="lcd-display px-2.5 py-1 rounded-lg text-[10px] font-mono border border-black shadow-inner font-black text-brand-yellow">
@@ -759,28 +1008,23 @@ export default function SpotifyTurntable() {
                 <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto justify-between sm:justify-end">
                   <button 
                     onClick={handlePrevPreset}
-                    className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-brand-yellow hover:bg-neutral-800 transition active:scale-95"
+                    className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-brand-yellow hover:bg-neutral-800 transition active:scale-95 cursor-pointer"
                     title="Anterior Preset"
                   >
                     <ChevronLeft size={16} />
                   </button>
 
-                  <select 
-                    className="bg-neutral-950 border border-neutral-800 rounded-lg py-1.5 px-2 text-[10px] font-mono font-black text-brand-yellow outline-none focus:border-brand-yellow cursor-pointer max-w-[190px]"
-                    value={currentPresetId}
-                    onChange={(e) => applyPreset(e.target.value)}
+                  <button 
+                    onClick={() => setShowPresetsModal(true)}
+                    className="bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 rounded-lg py-1.5 px-3 text-[10px] font-mono font-black text-brand-yellow hover:text-white outline-none cursor-pointer flex items-center gap-1.5 active:scale-95 transition-all shadow-md uppercase tracking-wider grow sm:grow-0 justify-center min-w-[150px]"
                   >
-                    {VOCAL_PRESETS.map(p => (
-                      <option key={p.id} value={p.id} className="bg-neutral-950 text-white font-mono">{p.name.toUpperCase()}</option>
-                    ))}
-                    {currentPresetId === 'custom' && (
-                      <option value="custom" className="bg-neutral-950 text-brand-yellow font-mono">PERSONALIZADO *</option>
-                    )}
-                  </select>
+                    <Sliders size={11} className="text-brand-yellow" />
+                    <span>VER PRESETS 🎚️</span>
+                  </button>
 
                   <button 
                     onClick={handleNextPreset}
-                    className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-brand-yellow hover:bg-neutral-800 transition active:scale-95"
+                    className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-brand-yellow hover:bg-neutral-800 transition active:scale-95 cursor-pointer"
                     title="Siguiente Preset"
                   >
                     <ChevronRight size={16} />
@@ -1132,42 +1376,111 @@ export default function SpotifyTurntable() {
                 </div>
               )}
 
-              {/* DYNAMIC RECORD CONTROLS FOR LOCAL FEEDBACK */}
-              <div className="w-full flex items-center justify-between border-t border-neutral-850 pt-4 px-1">
-                <div className="flex flex-col text-left">
-                  <span className="text-[10px] font-mono font-black uppercase tracking-wider text-neutral-400">VOLUMEN DE TU VOZ (MIC)</span>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Mic size={12} className="text-brand-yellow" />
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="100" 
-                      className="accent-brand-yellow h-1 bg-black rounded cursor-pointer w-24 sm:w-36"
-                      value={micGain}
-                      onChange={(e) => setMicGain(parseInt(e.target.value))}
-                    />
-                    <span className="text-[9px] font-mono text-neutral-500 font-bold">{micGain}%</span>
+              {/* DYNAMIC RECORD CONTROLS FOR LOCAL FEEDBACK & RECORDING DECK */}
+              <div className="w-full border-t border-neutral-850 pt-4 space-y-4 px-1 text-left">
+                {/* TOP DECK ROW: VOICE VOLUME & REAL-TIME MONITOR SWITCH */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-mono font-black uppercase tracking-wider text-neutral-400">VOLUMEN DE TU VOZ (MIC)</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Mic size={12} className="text-brand-yellow" />
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="100" 
+                        className="accent-brand-yellow h-1 bg-black rounded cursor-pointer w-28 sm:w-36"
+                        value={micGain}
+                        onChange={(e) => setMicGain(parseInt(e.target.value))}
+                      />
+                      <span className="text-[10px] font-mono text-neutral-500 font-bold">{micGain}%</span>
+                    </div>
+                  </div>
+
+                  {/* MONITOR TOGGLE (HEAR IT LIVE) */}
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      onClick={() => setMonitorActive(!monitorActive)}
+                      className={`px-3 py-1.5 rounded-lg text-[9px] font-mono font-black uppercase tracking-widest cursor-pointer border active:scale-95 transition-all ${
+                        monitorActive 
+                          ? 'bg-brand-green/15 text-brand-green border-brand-green/30 hover:bg-brand-green/25' 
+                          : 'bg-neutral-800 text-neutral-400 border-neutral-700 hover:bg-neutral-750'
+                      }`}
+                      title="Activa o desactiva escucharte a ti mismo en tus bocinas o auriculares"
+                    >
+                      {monitorActive ? '🟢 ESCUCHARME EN VIVO' : '🔴 ESCUCHARME DESACTIVADO'}
+                    </button>
+                    
+                    {/* Live microphone trigger */}
+                    <button 
+                      onClick={() => {
+                        if (micActive) {
+                          stopVocalProcessing();
+                        } else {
+                          startVocalProcessing();
+                        }
+                      }}
+                      className={`px-3.5 py-1.5 rounded-lg font-mono text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer active:scale-95 border ${
+                        micActive 
+                          ? 'bg-neutral-800 text-red-500 border-red-500/20 hover:bg-neutral-750' 
+                          : 'bg-neutral-900 text-brand-yellow border-neutral-800 hover:bg-black/60 font-black'
+                      }`}
+                    >
+                      {micActive ? <MicOff size={10} className="inline mr-1" /> : <Mic size={10} className="inline mr-1" />}
+                      <span>{micActive ? 'APAGAR MIC' : 'PROBAR MIC'}</span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => {
-                      if (micActive) {
-                        stopVocalProcessing();
-                      } else {
-                        startVocalProcessing();
-                      }
-                    }}
-                    className={`px-4.5 py-3 rounded-xl font-mono text-[9.5px] font-black uppercase tracking-widest transition-all cursor-pointer active:scale-95 flex items-center gap-2 ${
-                      micActive 
-                        ? 'bg-neutral-800 text-red-500 border border-red-500/20 hover:bg-neutral-750' 
-                        : 'bg-brand-yellow text-black hover:bg-white shadow-glow font-black'
-                    }`}
-                  >
-                    {micActive ? <MicOff size={12} /> : <Mic size={12} />}
-                    <span>{micActive ? 'APAGAR MICRO' : 'ENCENDER MICRO'}</span>
-                  </button>
+                {/* BOTTOM DECK ROW: RECORDING ENGINE AND TAKE CONTROLLERS */}
+                <div className="bg-black/40 border border-white/5 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                  {/* RECORD BUTTON */}
+                  <div className="flex items-center gap-3 w-full md:w-auto">
+                    <button
+                      onClick={isRecording ? handleStopRecording : handleStartRecording}
+                      className={`px-5 py-3 rounded-xl font-mono text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2 w-full md:w-auto ${
+                        isRecording 
+                          ? 'bg-red-600 text-white animate-pulse shadow-[0_0_12px_rgba(220,38,38,0.5)] border border-red-700' 
+                          : 'bg-brand-yellow text-black hover:bg-white shadow-glow'
+                      }`}
+                    >
+                      <Circle size={10} fill={isRecording ? "currentColor" : "none"} className={isRecording ? 'animate-ping' : ''} />
+                      <span>{isRecording ? `DETENER GRABACIÓN (${recordingSeconds}s)` : 'GRABAR MI VOZ 🎙️'}</span>
+                    </button>
+                  </div>
+
+                  {/* CAPTURED TAKE PLAYBACK & EXPORT DIRECT TO WAV BUTTONS */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto justify-end">
+                    {recordedBuffer ? (
+                      <>
+                        {/* Playback dry buffer through dynamic faders */}
+                        <button
+                          onClick={isPlayingRecording ? handleStopPlayback : handleStartPlayback}
+                          className={`px-4 py-2.5 rounded-xl font-mono text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                            isPlayingRecording 
+                              ? 'bg-brand-green text-black hover:bg-white' 
+                              : 'bg-neutral-900 text-white border border-neutral-800 hover:bg-neutral-800'
+                          }`}
+                        >
+                          {isPlayingRecording ? <Square size={9} fill="currentColor" /> : <Play size={9} fill="currentColor" />}
+                          <span>{isPlayingRecording ? 'PARAR REPRODUCCIÓN' : 'ESCUCHAR GRABACIÓN 🎧'}</span>
+                        </button>
+
+                        {/* Offline Render mix and download WAV */}
+                        <button
+                          onClick={handleDownloadWithEffects}
+                          disabled={isBouncing}
+                          className="px-4 py-2.5 rounded-xl font-mono text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2 bg-gradient-to-r from-brand-yellow to-brand-green text-black disabled:opacity-50"
+                        >
+                          <Download size={10} />
+                          <span>{isBouncing ? 'MASTERIZANDO VOZ...' : 'DESCARGAR AUDIO CON EFECTOS ✨'}</span>
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[9.5px] font-mono text-neutral-500 uppercase font-black tracking-wider text-center w-full">
+                        {isRecording ? 'Capturando tu voz pura (limpia/sin latencia)...' : 'Presiona GRABAR para capturar una toma de voz'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1503,6 +1816,179 @@ export default function SpotifyTurntable() {
         )}
       </AnimatePresence>
 
+      {/* VOCAL PRESETS DETAILED POPUP MODAL */}
+      <AnimatePresence>
+        {showPresetsModal && (
+          <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[9999] backdrop-blur-sm overflow-y-auto">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-neutral-900 border-4 border-neutral-800 p-6 rounded-3xl max-w-2xl w-full shadow-2xl relative text-left font-sans my-8"
+            >
+              <div className="absolute top-3 left-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+              <div className="absolute top-3 right-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+              <div className="absolute bottom-3 left-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+              <div className="absolute bottom-3 right-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
+
+              {/* Header */}
+              <div className="flex items-center gap-3 border-b border-white/5 pb-3 mb-5">
+                <div className="p-2 bg-brand-yellow/10 text-brand-yellow leading-none flex items-center justify-center rounded-lg pr-2.5">
+                  <Sliders size={20} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black italic uppercase tracking-tighter text-brand-yellow glow-yellow leading-none">
+                    PRESETS DE VOZ RAPLIFE STUDIO
+                  </h3>
+                  <p className="text-[9px] text-gray-400 font-mono font-black uppercase tracking-widest mt-1">
+                    Afinación militar y modelado de espacio analógico en un clic
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setShowPresetsModal(false)}
+                  className="ml-auto text-gray-400 hover:text-white p-1 hover:bg-black/20 rounded-md transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Presets Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[380px] overflow-y-auto pr-1">
+                {VOCAL_PRESETS.map((preset) => (
+                  <div 
+                    key={preset.id}
+                    onClick={() => {
+                      applyPreset(preset.id);
+                      setShowPresetsModal(false);
+                    }}
+                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between space-y-4 group relative overflow-hidden ${
+                      currentPresetId === preset.id 
+                        ? 'bg-brand-yellow/10 border-brand-yellow shadow-glow' 
+                        : 'bg-black/40 border-white/5 hover:border-brand-yellow/50 hover:bg-black/60'
+                    }`}
+                  >
+                    {/* Background neon accent */}
+                    <div className={`absolute top-0 right-0 w-16 h-16 rounded-full blur-2xl -mr-6 -mt-6 transition-opacity opacity-20 ${
+                      currentPresetId === preset.id ? 'bg-brand-yellow' : 'bg-brand-green'
+                    }`} />
+
+                    <div className="space-y-1 bg-transparent relative z-10 text-left">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-black uppercase italic text-white group-hover:text-brand-yellow transition-colors truncate">
+                          {preset.name}
+                        </h4>
+                        {currentPresetId === preset.id && (
+                          <span className="bg-brand-yellow text-black text-[8px] font-black uppercase px-2 py-0.5 rounded-full select-none">
+                            ACTIVO
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-gray-400 font-semibold leading-relaxed line-clamp-2">
+                        {preset.description}
+                      </p>
+                    </div>
+
+                    {/* Parameters specs readout */}
+                    <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-white/5 font-mono text-[8px] text-neutral-500 font-black tracking-tighter uppercase relative z-10">
+                      <div>
+                        TUNE: <span className={preset.autoTuneActive ? "text-brand-green" : "text-neutral-600"}>{preset.autoTuneActive ? 'ACTIVE' : 'OFF'}</span>
+                      </div>
+                      <div>
+                        REVERB: <span className="text-white">{preset.reverbWet}%</span>
+                      </div>
+                      <div>
+                        DELAY: <span className="text-white">{preset.delayWet}%</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-5 text-center leading-normal">
+                💡 Consejo: Después de elegir un preset, puedes retocar libremente cualquier ajuste de distorsión, eco o ecualizador en la consola principal para perfeccionar tu sonido.
+              </p>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
+}
+
+// --- WAV AUDIO BUFFER ENCODING UTILITIES ---
+function audioBufferToWav(buffer: AudioBuffer): Blob {
+  const numOfChan = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const format = 1; // 1 = 16-bit PCM integer
+  const bitDepth = 16;
+  
+  let result;
+  if (numOfChan === 2) {
+    result = interleave(buffer.getChannelData(0), buffer.getChannelData(1));
+  } else {
+    result = buffer.getChannelData(0);
+  }
+  
+  const bufferLength = result.length * 2;
+  const wavBuffer = new ArrayBuffer(44 + bufferLength);
+  const view = new DataView(wavBuffer);
+  
+  /* RIFF identifier */
+  writeString(view, 0, 'RIFF');
+  /* file length */
+  view.setUint32(4, 36 + bufferLength, true);
+  /* RIFF type */
+  writeString(view, 8, 'WAVE');
+  /* format chunk identifier */
+  writeString(view, 12, 'fmt ');
+  /* format chunk length */
+  view.setUint32(16, 16, true);
+  /* sample format */
+  view.setUint16(20, format, true);
+  /* channel count */
+  view.setUint16(22, numOfChan, true);
+  /* sample rate */
+  view.setUint32(24, sampleRate, true);
+  /* byte rate (sample rate * block align) */
+  view.setUint32(28, sampleRate * numOfChan * (bitDepth / 8), true);
+  /* block align (channel count * bytes per sample) */
+  view.setUint16(32, numOfChan * (bitDepth / 8), true);
+  /* bits per sample */
+  view.setUint16(34, bitDepth, true);
+  /* data chunk identifier */
+  writeString(view, 36, 'data');
+  /* data chunk length */
+  view.setUint32(40, bufferLength, true);
+  
+  floatTo16BitPCM(view, 44, result);
+  
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+function interleave(inputL: Float32Array, inputR: Float32Array): Float32Array {
+  const length = inputL.length + inputR.length;
+  const result = new Float32Array(length);
+  let index = 0;
+  let inputIndex = 0;
+  
+  while (index < length) {
+    result[index++] = inputL[inputIndex];
+    result[index++] = inputR[inputIndex];
+    inputIndex++;
+  }
+  return result;
+}
+
+function floatTo16BitPCM(output: DataView, offset: number, input: Float32Array) {
+  for (let i = 0; i < input.length; i++, offset += 2) {
+    let s = Math.max(-1, Math.min(1, input[i]));
+    output.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+}
+
+function writeString(view: DataView, offset: number, string: string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
 }

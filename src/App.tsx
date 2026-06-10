@@ -209,6 +209,26 @@ const AppContent = () => {
     }
   };
 
+  const handleDirectLogin = async () => {
+    setLoginError(null);
+    setIsLoginPending(true);
+    try {
+      // Direct standard popup login
+      await signInWithGoogle();
+    } catch (err: any) {
+      console.warn("Popup blocked or failed, falling back to Redirect login method:", err);
+      try {
+        await signInWithGoogleRedirect();
+      } catch (redirectErr: any) {
+        console.error("Direct redirect login error:", redirectErr);
+        setLoginError(redirectErr);
+        setIsLoginPending(false);
+      }
+    } finally {
+      setIsLoginPending(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-brand-dark text-white font-sans selection:bg-brand-yellow selection:text-black overflow-x-hidden boombox-texture pb-20 md:pb-8">
       {/* BOOMBOX TOP HANDLE / HEADER */}
@@ -295,7 +315,7 @@ const AppContent = () => {
                 </div>
               ) : (
                 <button 
-                  onClick={() => setShowLoginModal(true)} 
+                  onClick={handleDirectLogin} 
                   disabled={isLoginPending}
                   className="chrome-button px-3.5 py-1.5 md:px-5 md:py-3 rounded-lg md:rounded-xl text-black font-black uppercase text-[9px] md:text-xs shadow-lg hover:scale-105 transition-all disabled:opacity-50"
                 >
