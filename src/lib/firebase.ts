@@ -26,25 +26,14 @@ export const db = firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestor
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// Standard Popup Method
-export const signInWithGoogle = async () => {
-  try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return result.user;
-  } catch (error) {
-    console.error("Error signing in with Google (Popup)", error);
-    throw error;
-  }
+// Standard Popup Method - Synchronous return to avoid Safari popup blocking
+export const signInWithGoogle = () => {
+  return signInWithPopup(auth, googleProvider);
 };
 
-// Redirect Method - Immune to Pop-up Blockers and Third-Party Cookie Restrictions
-export const signInWithGoogleRedirect = async () => {
-  try {
-    await signInWithRedirect(auth, googleProvider);
-  } catch (error) {
-    console.error("Error signing in with Google (Redirect)", error);
-    throw error;
-  }
+// Redirect Method
+export const signInWithGoogleRedirect = () => {
+  return signInWithRedirect(auth, googleProvider);
 };
 
 // Expose getRedirectResult to retrieve credentials after returning from redirect

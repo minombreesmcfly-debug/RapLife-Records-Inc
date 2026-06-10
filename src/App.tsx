@@ -210,27 +210,34 @@ const AppContent = () => {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768);
   };
 
-  const handleLoginPopup = async () => {
+  const handleLoginPopup = () => {
     setLoginError(null);
     setIsLoginPending(true);
     setShowLoginModal(false);
-    try {
-      await signInWithGoogle();
-    } catch (err: any) {
-      console.error("Firebase Popup Login Error details:", err);
-      setLoginError(err);
-    } finally {
-      setIsLoginPending(false);
-    }
+    signInWithGoogle()
+      .then((result) => {
+        console.log("Logged in via popup:", result.user);
+        setIsLoginPending(false);
+      })
+      .catch((err: any) => {
+        console.error("Firebase Popup Login Error details:", err);
+        setLoginError(err);
+        setIsLoginPending(false);
+      });
   };
 
-  const handleLoginRedirect = async () => {
+  const handleLoginRedirect = () => {
     setLoginError(null);
     setIsLoginPending(true);
     setShowLoginModal(false);
     try {
       sessionStorage.setItem('pending_login_redirect', 'true');
-      await signInWithGoogleRedirect();
+      signInWithGoogleRedirect()
+        .catch((err: any) => {
+          console.error("Firebase Redirect Login Error details:", err);
+          setLoginError(err);
+          setIsLoginPending(false);
+        });
     } catch (err: any) {
       console.error("Firebase Redirect Login Error details:", err);
       setLoginError(err);
@@ -238,27 +245,33 @@ const AppContent = () => {
     }
   };
 
-  const handleDirectLogin = async () => {
+  const handleDirectLogin = () => {
     setLoginError(null);
     setIsLoginPending(true);
     
-    try {
-      console.log("Attempting direct Google Popup Login first (highly recommended for Safari/iOS)...");
-      await signInWithGoogle();
-    } catch (popupErr: any) {
-      console.warn("Popup blocked or failed, falling back to Redirect login method...", popupErr);
-      try {
-        sessionStorage.setItem('pending_login_redirect', 'true');
-        console.log("Triggering Google login redirection fallback...");
-        await signInWithGoogleRedirect();
-      } catch (err: any) {
-        console.error("Fallback Google redirect login error:", err);
-        setLoginError(err);
+    console.log("Attempting direct Google Popup Login first (highly recommended for Safari/iOS)...");
+    signInWithGoogle()
+      .then((result) => {
+        console.log("Popup login success! User:", result.user);
         setIsLoginPending(false);
-      }
-    } finally {
-      setIsLoginPending(false);
-    }
+      })
+      .catch((popupErr: any) => {
+        console.warn("Popup blocked or failed, falling back to Redirect login method...", popupErr);
+        try {
+          sessionStorage.setItem('pending_login_redirect', 'true');
+          console.log("Triggering Google login redirection fallback...");
+          signInWithGoogleRedirect()
+            .catch((err: any) => {
+              console.error("Fallback Google redirect login error:", err);
+              setLoginError(err);
+              setIsLoginPending(false);
+            });
+        } catch (err: any) {
+          console.error("Fallback Google redirect login error:", err);
+          setLoginError(err);
+          setIsLoginPending(false);
+        }
+      });
   };
 
   return (
