@@ -1187,7 +1187,7 @@ const GameView = () => {
   const handleTouchEnd = (k: string) => { keysRef.current[k] = false; };
 
   return (
-    <div className="w-full h-full flex flex-col items-center bg-brand-dark p-2 md:p-6 select-none overflow-hidden touch-none">
+    <div className="w-full min-h-screen flex flex-col items-center bg-brand-dark p-2 md:p-6 select-none">
       {/* HANDHELD CONSOLE FRAME */}
       <div className="relative w-full max-w-2xl bg-[#2a2a2a] rounded-[2.5rem] p-4 md:p-6 shadow-[0_20px_50px_rgba(0,0,0,0.8)] border-t border-white/10 flex flex-col">
         
@@ -1283,24 +1283,24 @@ const GameView = () => {
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="absolute inset-0 bg-red-910/50 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-10"
+                className="absolute inset-0 bg-red-950/85 backdrop-blur-md flex flex-col items-center justify-center p-3 sm:p-6 text-center z-10"
               >
-                <h2 className="text-5xl font-black italic uppercase tracking-tighter text-white mb-1">FAIL</h2>
-                <p className="text-xs font-bold uppercase tracking-widest mb-6 text-white/70">LA CALLE NO PERDONA</p>
-                <div className="bg-black/60 px-8 py-3 rounded-2xl border-2 border-white/15 mb-6">
-                  <p className="text-[9px] font-bold text-gray-500 uppercase mb-0.5">SCORE</p>
-                  <p className="text-2xl font-black italic font-mono text-brand-yellow leading-none">{score}</p>
+                <h2 className="text-3xl sm:text-5xl font-black italic uppercase tracking-tighter text-white mb-0.5 animate-pulse">FAIL</h2>
+                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-widest mb-3 text-white/70">LA CALLE NO PERDONA</p>
+                <div className="bg-black/60 px-5 py-1.5 sm:px-8 sm:py-3 rounded-2xl border-2 border-white/15 mb-4">
+                  <p className="text-[8px] font-bold text-gray-500 uppercase mb-0.5">SCORE</p>
+                  <p className="text-xl sm:text-2xl font-black italic font-mono text-brand-yellow leading-none">{score}</p>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs sm:max-w-md justify-center">
-                  <button onClick={startNewGame} className="chrome-button px-6 py-3 rounded-xl text-black font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(248,251,2,0.2)]">
-                    <RotateCcw size={14} /> REINTENTAR
+                <div className="flex flex-row gap-2 w-full max-w-xs sm:max-w-md justify-center">
+                  <button onClick={startNewGame} className="chrome-button px-4 py-2 sm:px-6 sm:py-3 rounded-xl text-black font-black uppercase tracking-widest text-[9.5px] sm:text-xs flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(248,251,2,0.2)]">
+                    <RotateCcw size={12} /> REINTENTAR
                   </button>
                   <button 
                     onClick={() => {
                       setGameState('idle');
                       gameStateRef.current = 'idle';
                     }} 
-                    className="bg-black/80 hover:bg-black/100 text-white border-2 border-white/20 hover:border-brand-yellow/80 rounded-xl px-6 py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all"
+                    className="bg-black/80 hover:bg-black/105 text-white border-2 border-white/20 hover:border-brand-yellow/80 rounded-xl px-4 py-2 sm:px-6 sm:py-3 font-black uppercase tracking-widest text-[9.5px] sm:text-xs flex items-center justify-center gap-1.5 transition-all"
                   >
                     CAMBIAR LEYENDA
                   </button>
@@ -1325,105 +1325,73 @@ const GameView = () => {
 
         {/* PHYSICAL CONTROLS AREA */}
         <div className="mt-6 flex flex-col gap-4 relative z-10">
-          <div className="flex justify-between items-center px-2 md:px-4">
+          <div className="flex justify-between items-center px-1 sm:px-4">
             
-            {/* LEFT: JOYSTICK */}
-            <div className="flex flex-col items-center gap-2">
-              <div 
-                ref={joystickRef}
-                onMouseDown={handleJoystickStart}
-                onTouchStart={handleJoystickStart}
-                className="relative w-32 h-32 md:w-36 md:h-36 bg-gradient-to-b from-[#1b1b1b] to-[#0a0a0a] rounded-full border-4 border-[#121212] shadow-[inset_0_4px_12px_rgba(0,0,0,0.9),_0_8px_16px_rgba(0,0,0,0.6)] flex items-center justify-center cursor-grab active:cursor-grabbing group select-none"
-              >
-                {/* Outer Ring guide details */}
-                <div className="absolute inset-2 rounded-full border border-white/5 opacity-50 pointer-events-none" />
-                <div className="absolute top-2 text-white/10 font-bold text-[8px] tracking-widest pointer-events-none">UP</div>
-                <div className="absolute bottom-2 text-white/10 font-bold text-[8px] tracking-widest pointer-events-none">DOWN</div>
-                <div className="absolute left-2 text-white/10 font-bold text-[8px] tracking-widest pointer-events-none">LEFT</div>
-                <div className="absolute right-2 text-white/10 font-bold text-[8px] tracking-widest pointer-events-none">RIGHT</div>
+            {/* LEFT: WALK ARROW BUTTONS */}
+            <div className="flex flex-col items-center gap-1.5 select-none">
+              <div className="flex items-center bg-gradient-to-b from-[#1a1a1a] to-[#0d0d0d] p-1.5 rounded-2xl border-4 border-[#121212] shadow-[inset_0_4px_8px_rgba(0,0,0,0.9)] gap-1">
+                {/* LEFT FLIGHT */}
+                <button 
+                  onMouseDown={() => { keysRef.current['arrowleft'] = true; }}
+                  onMouseUp={() => { keysRef.current['arrowleft'] = false; }}
+                  onMouseLeave={() => { keysRef.current['arrowleft'] = false; }}
+                  onTouchStart={(e) => { e.preventDefault(); keysRef.current['arrowleft'] = true; }}
+                  onTouchEnd={(e) => { e.preventDefault(); keysRef.current['arrowleft'] = false; }}
+                  className="w-14 h-14 bg-gradient-to-b from-[#333333] to-[#151515] active:from-[#151515] active:to-[#090909] rounded-xl border border-white/5 active:border-black shadow-md flex items-center justify-center transition-all cursor-pointer select-none active:translate-y-[2px]"
+                  title="CAMINAR IZQUIERDA"
+                >
+                  <ChevronLeft size={28} className="text-brand-yellow font-black filter drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,1)]" />
+                </button>
 
-                {/* SVG Visual Elements for Washer, Shaft, and Ball Top */}
-                <svg className="absolute inset-0 w-full h-full pointer-events-none select-none" viewBox="0 0 128 128">
-                  <defs>
-                    <linearGradient id="metal-shaft" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#ffffff" />
-                      <stop offset="35%" stopColor="#9e9e9e" />
-                      <stop offset="65%" stopColor="#cccccc" />
-                      <stop offset="100%" stopColor="#3a3a3a" />
-                    </linearGradient>
-                    <radialGradient id="red-ball" cx="35%" cy="35%" r="65%">
-                      <stop offset="0%" stopColor="#ff5d5d" />
-                      <stop offset="55%" stopColor="#d30000" />
-                      <stop offset="100%" stopColor="#600000" />
-                    </radialGradient>
-                    <radialGradient id="washer-grad" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="#1e1e1e" />
-                      <stop offset="85%" stopColor="#121212" />
-                      <stop offset="100%" stopColor="#252525" />
-                    </radialGradient>
-                  </defs>
-
-                  {/* Black dust washer (rounds and moves slightly with stick) */}
-                  <circle 
-                    cx={64 + joystickPos.x * 0.25} 
-                    cy={64 + joystickPos.y * 0.25} 
-                    r="26" 
-                    fill="url(#washer-grad)" 
-                    stroke="#050505" 
-                    strokeWidth="2.5"
-                    filter="drop-shadow(0px 2px 4px rgba(0,0,0,0.8))"
-                  />
-
-                  {/* Steel Shaft */}
-                  <line 
-                    x1="64" 
-                    y1="64" 
-                    x2={64 + joystickPos.x} 
-                    y2={64 + joystickPos.y} 
-                    stroke="url(#metal-shaft)" 
-                    strokeWidth="9" 
-                    strokeLinecap="round" 
-                  />
-
-                  {/* Red Ball Top */}
-                  <circle 
-                    cx={64 + joystickPos.x} 
-                    cy={64 + joystickPos.y} 
-                    r="20" 
-                    fill="url(#red-ball)" 
-                    filter="drop-shadow(0px 6px 8px rgba(0,0,0,0.7))" 
-                  />
-                </svg>
+                {/* RIGHT FLIGHT */}
+                <button 
+                  onMouseDown={() => { keysRef.current['arrowright'] = true; }}
+                  onMouseUp={() => { keysRef.current['arrowright'] = false; }}
+                  onMouseLeave={() => { keysRef.current['arrowright'] = false; }}
+                  onTouchStart={(e) => { e.preventDefault(); keysRef.current['arrowright'] = true; }}
+                  onTouchEnd={(e) => { e.preventDefault(); keysRef.current['arrowright'] = false; }}
+                  className="w-14 h-14 bg-gradient-to-b from-[#333333] to-[#151515] active:from-[#151515] active:to-[#090909] rounded-xl border border-white/5 active:border-black shadow-md flex items-center justify-center transition-all cursor-pointer select-none active:translate-y-[2px]"
+                  title="CAMINAR DERECHA"
+                >
+                  <ChevronRight size={28} className="text-brand-yellow font-black filter drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,1)]" />
+                </button>
               </div>
-              <span className="text-[8px] font-black text-white/20 uppercase tracking-widest mt-1">PALANCA</span>
+              <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">DIRECCIÓN</span>
             </div>
 
-            {/* RIGHT: ACTION BUTTONS */}
-            <div className="flex gap-4 md:gap-8">
-              <div className="flex flex-col items-center gap-2">
-                <div className="p-1 bg-black rounded-full shadow-inner">
+            {/* RIGHT: ACTION BUTTONS (Atari / Nintendo oval pill-shape, tilted diagonally) */}
+            <div className="flex flex-col items-center gap-1.5 select-none">
+              <div className="relative w-40 h-20 bg-gradient-to-b from-[#1a1a1a] to-[#0d0d0d] rounded-2xl border-4 border-[#121212] shadow-[inset_0_4px_8px_rgba(0,0,0,0.9)]">
+                {/* Diagonal background accent decal */}
+                <div className="absolute inset-x-3 top-1/2 -translate-y-1/2 h-[2px] bg-[#121212] rotate-[-22deg] opacity-60" />
+                
+                {/* Button B (FIRE) - lower, left */}
+                <div className="absolute left-3 bottom-1.5 flex flex-col items-center">
                   <button 
-                    className="w-16 h-16 md:w-20 md:h-20 bg-[#ff4444] rounded-full border-b-8 border-red-900 active:border-b-0 active:translate-y-2 transition-all flex items-center justify-center shadow-lg" 
+                    onMouseDown={shoot}
+                    onTouchStart={(e) => { e.preventDefault(); shoot(); }}
+                    className="w-12 h-5 bg-[#f59e0b] rounded-full border-b-4 border-[#b45309] active:border-b-0 active:translate-y-[2px] shadow-lg transform rotate-[-22deg] flex items-center justify-center transition-all cursor-pointer select-none"
+                    title="DISPARAR"
+                  >
+                    <span className="text-black font-black text-[9px] transform rotate-[22deg]">B</span>
+                  </button>
+                  <span className="text-[7px] font-black text-white/30 uppercase tracking-widest mt-0.5">FIRE</span>
+                </div>
+
+                {/* Button A (JUMP3) - higher, right */}
+                <div className="absolute right-3 top-1.5 flex flex-col items-center">
+                  <button 
                     onMouseDown={jump}
                     onTouchStart={(e) => { e.preventDefault(); jump(); }}
+                    className="w-12 h-5 bg-[#ef4444] rounded-full border-b-4 border-[#b91c1c] active:border-b-0 active:translate-y-[2px] shadow-lg transform rotate-[-22deg] flex items-center justify-center transition-all cursor-pointer select-none"
+                    title="SALTAR"
                   >
-                    <span className="text-black font-black text-xl">A</span>
+                    <span className="text-black font-black text-[9px] transform rotate-[22deg]">A</span>
                   </button>
+                  <span className="text-[7px] font-black text-white/30 uppercase tracking-widest mt-0.5">JUMP</span>
                 </div>
-                <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">JUMP</span>
               </div>
-              <div className="flex flex-col items-center gap-2">
-                 <div className="p-1 bg-black rounded-full shadow-inner">
-                    <button 
-                      className="w-16 h-16 md:w-20 md:h-20 bg-brand-yellow rounded-full border-b-8 border-yellow-700 active:border-b-0 active:translate-y-2 transition-all flex items-center justify-center shadow-lg" 
-                      onMouseDown={shoot}
-                      onTouchStart={(e) => { e.preventDefault(); shoot(); }}
-                    >
-                      <span className="text-black font-black text-xl">B</span>
-                    </button>
-                 </div>
-                 <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">FIRE</span>
-              </div>
+              <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">ACCIONES</span>
             </div>
           </div>
 
