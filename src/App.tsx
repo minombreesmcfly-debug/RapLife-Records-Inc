@@ -182,6 +182,10 @@ const AppContent = () => {
     checkRedirect();
   }, []);
 
+  const isMobileDevice = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768);
+  };
+
   const handleLoginPopup = async () => {
     setLoginError(null);
     setIsLoginPending(true);
@@ -212,8 +216,23 @@ const AppContent = () => {
   const handleDirectLogin = async () => {
     setLoginError(null);
     setIsLoginPending(true);
+    
+    // Auto-detect mobile devices and use redirect instead of popups
+    // This bypasses popup blockers on Chrome mobile & Safari iOS that cause infinite loading hang
+    if (isMobileDevice()) {
+      console.log("Mobile device detected. Directly triggering Redirect Login helper...");
+      try {
+        await signInWithGoogleRedirect();
+      } catch (err: any) {
+        console.error("Direct mobile redirect login error:", err);
+        setLoginError(err);
+        setIsLoginPending(false);
+      }
+      return;
+    }
+
     try {
-      // Direct standard popup login
+      // Direct standard popup login for desktop
       await signInWithGoogle();
     } catch (err: any) {
       console.warn("Popup blocked or failed, falling back to Redirect login method:", err);
@@ -479,22 +498,42 @@ const AppContent = () => {
                 {loginError?.code === 'auth/unauthorized-domain' || (loginError?.message && loginError.message.includes('unauthorized-domain')) ? (
                   <>
                     <p className="text-xs uppercase font-black tracking-wider text-brand-yellow">
-                      ⚠️ ¡Falta autorizar este dominio en tu Consola Firebase!
+                      ⚠️ ¡Falta autorizar AMBOS dominios en Firebase!
                     </p>
-                    <div className="space-y-2 text-xs text-gray-300 font-medium leading-relaxed">
+                    <div className="space-y-3 text-xs text-gray-300 font-medium leading-relaxed">
                       <p>
-                        Para seguridad de Firebase Auth, debes configurar tus dominios oficiales para que se permita el inicio de sesión.
+                        Para seguridad de Firebase Auth, debes configurar tus dominios oficiales para permitir el login. Al trabajar en Google AI Studio, <strong>tienes dos dominios distintos (uno para desarrollo de edición y otro para compartir/móvil) que se diferencian solo por las letras 'dev' y 'pre'</strong>:
                       </p>
-                      <div className="bg-black/40 p-3 rounded-lg border border-black font-mono text-[11px] text-brand-green select-all text-center">
-                        {window.location.hostname}
+                      
+                      <div className="space-y-2 border-2 border-dashed border-brand-yellow/20 p-3 rounded-2xl bg-black/50">
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-brand-yellow tracking-wider mb-1">1. Entorno Desarrollador (Desktop/AI Studio):</p>
+                          <div className="bg-black/60 p-2 rounded border border-white/5 font-mono text-[10px] text-brand-green select-all text-center">
+                            {window.location.hostname.includes('-pre-') ? window.location.hostname.replace('-pre-', '-dev-') : window.location.hostname}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-brand-yellow tracking-wider mb-1">2. Entorno Vista Previa / Compartir (Tu Celular / Mobile):</p>
+                          <div className="bg-black/60 p-2 rounded border border-white/5 font-mono text-[10px] text-brand-green select-all text-center">
+                            {window.location.hostname.includes('-dev-') ? window.location.hostname.replace('-dev-', '-pre-') : window.location.hostname}
+                          </div>
+                        </div>
                       </div>
-                      <p className="font-bold text-white mt-2 mb-1">Pasos para solucionarlo:</p>
-                      <ol className="list-decimal pl-4 space-y-1.5 text-gray-400">
-                        <li>Ir a tu <a href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`} target="_blank" rel="noopener noreferrer" className="text-brand-yellow hover:underline inline-flex items-center gap-1 font-bold">Consola Firebase <ExternalLink size={10} /></a>.</li>
-                        <li>Entrar en <strong>Authentication &gt; Settings &gt; Authorized domains</strong> (Dominios autorizados).</li>
-                        <li>Hacer clic en <strong>Add domain</strong> (Añadir dominio).</li>
-                        <li>Pegar exactamente el dominio arriba indicado (<strong>{window.location.hostname}</strong>).</li>
-                        <li>Guardar y volver a intentar en 1 minuto.</li>
+
+                      <p className="text-red-400 font-bold text-[11px] leading-tight flex items-start gap-1">
+                        <span>🔍</span>
+                        <span>
+                          <strong>Nota Crítica:</strong> Es muy común autorizar solo el primero y olvidar el segundo. Ambos deben estar registrados en Firebase.
+                        </span>
+                      </p>
+
+                      <p className="font-bold text-white mt-1">Cómo solucionarlo rápido:</p>
+                      <ol className="list-decimal pl-4 space-y-1 text-gray-400">
+                        <li>Abre tu <a href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`} target="_blank" rel="noopener noreferrer" className="text-brand-yellow hover:underline inline-flex items-center gap-1 font-bold">Consola Firebase <ExternalLink size={10} /></a>.</li>
+                        <li>Entra en <strong>Authentication &gt; Settings &gt; Authorized domains</strong>.</li>
+                        <li>Haz clic en <strong>Add domain</strong> (Añadir dominio).</li>
+                        <li>Copia y añade individualmente <strong>cada uno</strong> de los dos nombres de dominio listados arriba.</li>
+                        <li>Guarda y vuelve a iniciar sesión en tu celular.</li>
                       </ol>
                     </div>
                   </>
