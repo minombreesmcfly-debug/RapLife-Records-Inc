@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { MusicProvider, useMusic } from './context/MusicContext';
-import { Home, User, Radio, Gamepad2, Settings, LogIn, LogOut, Mic2, Heart, PlusCircle, ShieldCheck, Play, Upload, Volume2, VolumeX, Shirt, X, AlertTriangle, ExternalLink, Compass, Monitor, Smartphone } from 'lucide-react';
+import { Home, User, Radio, Gamepad2, Settings, LogIn, LogOut, Mic2, Heart, PlusCircle, ShieldCheck, Play, Pause, Upload, Volume2, VolumeX, Shirt, X, AlertTriangle, ExternalLink, Compass, Monitor, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { signInWithGoogle, signInWithGoogleRedirect, getRedirectResultHelper, logoutUser } from './lib/firebase';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -161,7 +161,7 @@ const LandingPage = () => (
 
 const AppContent = () => {
   const { user, profile, loading, isAdmin } = useAuth();
-  const { currentTrack, isMuted, toggleMute } = useMusic();
+  const { currentTrack, isMuted, toggleMute, isPlaying, togglePlay } = useMusic();
   const [loginError, setLoginError] = React.useState<any | null>(null);
   const [isLoginPending, setIsLoginPending] = React.useState(false);
   const [showLoginModal, setShowLoginModal] = React.useState(false);
@@ -296,29 +296,53 @@ const AppContent = () => {
 
           {/* RIGHT: ACTIONS & LCD STATUS */}
           <div className="flex items-center gap-2 md:gap-4 ml-auto">
-            {/* LCD STATUS DISPLAY WITH BUILT-IN SILENCIAR BUTTON */}
-            <div className="lcd-display px-2.5 py-1 md:px-4 md:py-2 rounded-lg border-2 md:border-4 border-black min-w-[150px] sm:min-w-[190px] md:min-w-[240px] flex items-center justify-between gap-2 text-left">
+            {/* LCD STATUS DISPLAY WITH BUILT-IN PLAY & SILENCIAR BUTTON */}
+            <div className="lcd-display px-2.5 py-1 md:px-4 md:py-2 rounded-lg border-2 md:border-4 border-black min-w-[160px] sm:min-w-[200px] md:min-w-[260px] flex items-center justify-between gap-1.5 md:gap-2.5 text-left">
               <div className="min-w-0 flex-grow">
-                <div className="text-[8px] md:text-[10px] opacity-75 font-mono uppercase font-black text-brand-green">FM 108.9 MHz</div>
-                <div className="text-[10px] md:text-xs font-mono truncate uppercase tracking-widest text-brand-yellow font-black mt-0.5">
-                  {currentTrack ? `PLAYING: ${currentTrack.title}` : 'STATUS: READY'}
+                <div className="text-[7.5px] md:text-[9px] opacity-75 font-mono uppercase font-black text-brand-green">FM 108.9 MHz</div>
+                <div className="text-[9px] md:text-xs font-mono truncate uppercase tracking-widest text-brand-yellow font-black mt-0.5">
+                  {currentTrack 
+                    ? (isPlaying ? `📻 SONANDO: ${currentTrack.title}` : `⏸️ PAUSADO: ${currentTrack.title}`) 
+                    : 'STATUS: READY'
+                  }
                 </div>
               </div>
-              <button 
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  toggleMute();
-                }}
-                className={`flex-shrink-0 flex items-center justify-center p-1 md:p-1.5 rounded-md transition-all cursor-pointer border active:scale-90 ${
-                  isMuted 
-                    ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/35 shadow-[0_0_8px_rgba(239,68,68,0.3)]' 
-                    : 'bg-brand-green/20 text-brand-green border-brand-green/30 hover:bg-brand-green/30 shadow-[0_0_8px_rgba(57,255,20,0.2)]'
-                }`}
-                title={isMuted ? "Quitar Silencio" : "Silenciar Radio"}
-              >
-                {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-              </button>
+              
+              <div className="flex items-center gap-1 shrink-0">
+                {/* PLAY / PAUSE TRIGGER FOR MOBILE AUTOPLAY BYPASS */}
+                <button 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    togglePlay();
+                  }}
+                  className={`flex items-center justify-center p-1 md:p-1.5 rounded-md transition-all cursor-pointer border active:scale-90 ${
+                    isPlaying 
+                      ? 'bg-brand-yellow/10 text-brand-yellow border-brand-yellow/30 hover:bg-brand-yellow/25' 
+                      : 'bg-brand-green text-black border-brand-green hover:bg-brand-green/85 shadow-[0_0_8px_rgba(57,255,20,0.5)] animate-pulse'
+                  }`}
+                  title={isPlaying ? "Pausar Radio" : "Reproducir Radio"}
+                >
+                  {isPlaying ? <Pause size={11} fill="currentColor" /> : <Play size={11} fill="currentColor" />}
+                </button>
+
+                {/* MUTE / UNMUTE */}
+                <button 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleMute();
+                  }}
+                  className={`flex items-center justify-center p-1 md:p-1.5 rounded-md transition-all cursor-pointer border active:scale-90 ${
+                    isMuted 
+                      ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/35 shadow-[0_0_8px_rgba(239,68,68,0.3)]' 
+                      : 'bg-brand-green/20 text-brand-green border-brand-green/30 hover:bg-brand-green/30 shadow-[0_0_8px_rgba(57,255,20,0.2)]'
+                  }`}
+                  title={isMuted ? "Quitar Silencio" : "Silenciar Radio"}
+                >
+                  {isMuted ? <VolumeX size={11} /> : <Volume2 size={11} />}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-1.5 md:gap-3">

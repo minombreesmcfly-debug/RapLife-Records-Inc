@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
-import { collection, query, getDocs, doc, updateDoc, addDoc, serverTimestamp, where, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, updateDoc, addDoc, serverTimestamp, where, deleteDoc, setDoc, getDoc, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
 import { Shield, Upload, Star, Music, User, Check, X, Radio, PlayCircle, PlusCircle, Pencil, Trash, Link2 } from 'lucide-react';
@@ -15,6 +15,7 @@ const AdminView = () => {
 
   const [artists, setArtists] = useState<any[]>([]);
   const [pendingTracks, setPendingTracks] = useState<any[]>([]);
+  const [spotifyRequests, setSpotifyRequests] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [radioFile, setRadioFile] = useState<File | null>(null);
   const [radioTitle, setRadioTitle] = useState('');
@@ -79,11 +80,37 @@ const AdminView = () => {
         console.error("Error fetching spotify admin config:", err);
       }
 
+      // Fetch Spotify Requests
+      try {
+        const reqQ = query(collection(db, 'spotify_requests'), limit(60));
+        const reqSnap = await getDocs(reqQ);
+        const reqsList = reqSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        reqsList.sort((a: any, b: any) => {
+          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tB - tA;
+        });
+        setSpotifyRequests(reqsList);
+      } catch (err) {
+        console.error("Error fetching spotify requests:", err);
+      }
+
       // Fetch local radio tracks
       await fetchLocalRadioTracks();
     };
     fetchData();
   }, [isAdmin]);
+
+  const updateSpotifyRequestStatus = async (id: string, status: string) => {
+    try {
+      await updateDoc(doc(db, 'spotify_requests', id), {
+        status: status
+      });
+      setSpotifyRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+    } catch (err) {
+      console.error("Error updating spotify request status:", err);
+    }
+  };
 
   const approveTrack = async (id: string) => {
     try {
@@ -699,6 +726,96 @@ const AdminView = () => {
               {savingSpotify ? 'GUARDANDO...' : 'ACTUALIZAR SPOTIFY'}
             </button>
          </div>
+      </div>
+
+      {/* PETICIONES DE SPOTIFY DE ARTISTAS */}
+      <div className="bg-brand-dark p-8 rounded-[2.5rem] border-4 border-boombox-gray space-y-8 relative overflow-hidden">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-[#1DB954]/10 rounded-2xl text-[#1DB954]">
+              <Music size={28} />
+            </div>
+            <div>
+              <h2 className="text-3xl font-black italic uppercase tracking-tighter text-white">PEDIDOS DE PLAYLIST SPOTIFY</h2>
+              <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px]">CANCIONES ENVIADAS POR ARTISTAS AL REGISTRARSE</p>
+            </div>
+          </div>
+          <div className="px-4 py-2 bg-[#1DB954]/10 rounded-xl border border-[#1DB954]/25">
+            <span className="text-[#1DB954] font-black italic text-xl">
+              {spotifyRequests.filter(r => r.status === 'pending').length}
+            </span>
+            <span className="text-gray-500 font-black uppercase text-[10px] ml-2">PENDIENTES</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {spotifyRequests.map(req => (
+            <div key={req.id} className={`p-6 rounded-3xl border transition-all ${req.status === 'added' ? 'bg-gradient-to-br from-neutral-900 via-black to-[#1DB954]/5 border-[#1DB954]/20 opacity-80' : 'bg-white/5 border-white/10 hover:border-brand-yellow/30'}`}>
+              <div className="flex items-center justify-between gap-2 mb-4">
+                <div>
+                  <h3 className="font-black italic text-lg uppercase text-white truncate">{req.displayName}</h3>
+                  {req.spotifyUrl ? (
+                    <a 
+                      href={req.spotifyUrl} target="_blank" rel="noopener noreferrer"
+                      className="text-[10px] text-brand-yellow hover:underline flex items-center gap-1 font-bold tracking-tight uppercase"
+                    >
+                      <Link2 size={10} /> VER BIO SPOTIFY
+                    </a>
+                  ) : (
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Sin enlace de Spotify</p>
+                  )}
+                </div>
+                <span className={`px-2.5 py-1 rounded-md text-[8px] font-black uppercase tracking-widest ${req.status === 'added' ? 'bg-[#1DB954]/15 text-[#1db954] border border-[#1DB954]/30' : 'bg-brand-yellow/15 text-brand-yellow border border-brand-yellow/30'}`}>
+                  {req.status === 'added' ? 'AÑADIDO ✓' : 'PENDIENTE'}
+                </span>
+              </div>
+
+              <div className="space-y-2 bg-black/40 p-4 rounded-2xl border border-white/5 mb-4">
+                <p className="text-[8.5px] font-black text-gray-500 uppercase tracking-widest">CANCIONES SUGERIDAS:</p>
+                <ol className="list-decimal list-inside text-xs font-bold text-gray-300 space-y-1.5 pt-1 uppercase">
+                  {req.songs && req.songs.map((song: string, idx: number) => (
+                    <li key={idx} className="truncate">
+                      <span className="text-white italic">{song}</span>
+                    </li>
+                  ))}
+                  {(!req.songs || req.songs.length === 0) && (
+                    <li className="text-gray-600 italic">Ninguna canción sugerida</li>
+                  )}
+                </ol>
+              </div>
+
+              {req.status !== 'added' && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => updateSpotifyRequestStatus(req.id, 'added')}
+                    className="flex-grow bg-[#1DB954]/20 text-[#1DB954] border border-[#1DB954]/20 py-2.5 rounded-xl font-black italic uppercase text-[10px] hover:bg-[#1DB954] hover:text-black transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <Check size={14} /> MARCAR COMO AÑADIDO
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm("¿Estás seguro de eliminar esta solicitud de playlist?")) {
+                        deleteDoc(doc(db, 'spotify_requests', req.id));
+                        setSpotifyRequests(prev => prev.filter(r => r.id !== req.id));
+                      }
+                    }}
+                    className="p-2.5 bg-red-500/15 text-red-500 border border-red-500/10 rounded-xl hover:bg-red-500 hover:text-white transition-all"
+                    title="Rechazar petición"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {spotifyRequests.length === 0 && (
+            <div className="col-span-full py-16 bg-white/[0.01] rounded-[2.5rem] border-2 border-dashed border-white/5 flex flex-col items-center justify-center gap-3 text-center text-gray-650">
+              <Music size={40} className="opacity-20" />
+              <p className="font-black italic uppercase tracking-widest text-xs">NO HAY PEDIDOS DE PLAYLIST REGISTRADOS</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* TRACK MODERATION SECTION */}

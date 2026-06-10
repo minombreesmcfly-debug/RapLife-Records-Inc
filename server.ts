@@ -227,10 +227,13 @@ MODIFICATIONS TO APPLY:
 ${outlinesDesc}
 
 CRITICAL STYLING RULES:
-1. Poses, facial features, expressions, eye colors, mouths, hair, head accessories, hands, body proportions, and background environment must remain 100% IDENTICAL and untouched.
-2. Only change the fabrics, styles, colors, and textures of the apparel (shirts, jackets, hoodies, shoes/sneakers, pants, chains, or hats) worn on the bodies.
-3. The newly generated outfits must match the lighting, perspective, shadows, and overall high-quality realistic photo quality.
-4. Output the newly updated image.`;
+1. The result MUST be a high-quality, ultra-realistic real-life photo.
+2. The pose of the character must look confident, bold, and in a "hype beast" aesthetic.
+3. The image must look like it was taken with a camera flash.
+4. If there are accessories on the character (chains, watches, rings, jewelry, glasses, belts), make them look pristine, shiny, and brand new.
+5. Apply the following aesthetic style for the character's clothing: "random outfit style rap, hype beast, alta moda urbana de marca Rap Life Records".
+6. Facial features, mouths, hair, head shapes, hands, and background environment must remain identical and cohesive. Only change the clothing to match the requested style.
+7. Output the newly updated image.`;
 
       parts.push({ text: promptStr });
 

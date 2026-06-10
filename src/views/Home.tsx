@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
-import { collection, query, where, getDocs, orderBy, limit, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, addDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { 
   Flame, Star, TrendingUp, Music, Play, ExternalLink, Radio, 
@@ -53,6 +53,7 @@ const HomeView = () => {
   const { play } = useMusic();
   const [pinnedArtists, setPinnedArtists] = useState<any[]>([]);
   const [recentTracks, setRecentTracks] = useState<any[]>([]);
+  const [spotifyPlaylistId, setSpotifyPlaylistId] = useState('');
 
   // Promo selector
   const [activePromTab, setActivePromTab] = useState(0);
@@ -75,18 +76,32 @@ const HomeView = () => {
 
   useEffect(() => {
     const fetchData = async () => {
+      // Fetch Pinned Artists
       try {
-        // Fetch Pinned Artists
         const qPinned = query(collection(db, 'users'), where('role', '==', 'artist'), where('isPinned', '==', true), limit(6));
         const snapPinned = await getDocs(qPinned);
         setPinnedArtists(snapPinned.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        console.error("Error fetching pinned artists on home view:", e);
+      }
 
-        // Fetch Recent Tracks
+      // Fetch Recent Tracks
+      try {
         const qTracks = query(collection(db, 'tracks'), where('isRadioInterstitial', '==', false), orderBy('createdAt', 'desc'), limit(10));
         const snapTracks = await getDocs(qTracks);
         setRecentTracks(snapTracks.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (e) {
-        console.error("Error fetching home data:", e);
+        console.error("Error fetching recent tracks on home view:", e);
+      }
+
+      // Fetch Spotify Playlist config
+      try {
+        const snapSpotify = await getDoc(doc(db, 'config', 'spotify'));
+        if (snapSpotify.exists()) {
+          setSpotifyPlaylistId(snapSpotify.data().playlistId || '');
+        }
+      } catch (err) {
+        console.error("Error fetching spotify playlist config on home view:", err);
       }
     };
     fetchData();
@@ -136,6 +151,41 @@ const HomeView = () => {
       exit={{ opacity: 0 }}
       className="p-4 md:p-10 space-y-16 max-w-7xl mx-auto"
     >
+      {/* Official Artist Spotify Playlist additions tracker */}
+      {profile?.role === 'artist' && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-r from-brand-yellow/15 via-black to-neutral-900 border-2 border-brand-yellow/35 p-6 md:p-8 rounded-[2rem] relative overflow-hidden shadow-glow space-y-4 text-left"
+        >
+          <div className="absolute right-0 top-0 w-64 h-64 bg-brand-yellow/5 rounded-full blur-3xl pointer-events-none" />
+          <div className="flex items-center gap-3">
+            <Sparkles size={24} className="text-brand-yellow animate-pulse" />
+            <h3 className="text-xl md:text-2xl font-black italic uppercase tracking-tighter text-white">PLAYLIST OFICIAL RAPLIFE RECODS</h3>
+          </div>
+          <p className="text-xs md:text-sm text-gray-200 uppercase font-black tracking-tight max-w-4xl leading-relaxed">
+            "Las canciones que enviaste serán agregadas en un plazo de 24 a 48 horas a nuestra lista oficial de reproducción de <span className="text-brand-yellow">RapLife Records</span> en Spotify. No olvides compartir. Estamos creciendo juntos con este movimiento. Gracias por ser parte de esto."
+          </p>
+          
+          {spotifyPlaylistId && (
+            <div className="flex flex-wrap items-center gap-4 pt-2">
+              <a 
+                href={`https://open.spotify.com/playlist/${spotifyPlaylistId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-3 bg-[#1DB954] hover:bg-[#1ed760] text-black font-black uppercase text-xs tracking-wider rounded-xl flex items-center gap-2 shadow-glow transition-all active:scale-95"
+              >
+                <Music size={14} fill="currentColor" />
+                COMPARTIR PLAYLIST DE SPOTIFY
+              </a>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                🔥 ¡MANTENTE ACTIVO EN NUESTRO REPRODUCTOR GLOBAL Y ROMPE LAS CALLES!
+              </p>
+            </div>
+          )}
+        </motion.div>
+      )}
+
       {/* Pinned Artists (Top Talents banner grid) */}
       <section id="top-artists-section">
         <div className="flex items-center justify-between mb-8">

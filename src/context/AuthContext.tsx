@@ -21,13 +21,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        const docRef = doc(db, 'users', u.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setProfile(docSnap.data());
-        } else {
-          // If no profile, we might need the user to choose their role
-          setProfile(null);
+        try {
+          const docRef = doc(db, 'users', u.uid);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            setProfile(docSnap.data());
+          } else {
+            // If no profile, we might need the user to choose their role
+            setProfile(null);
+          }
+        } catch (error) {
+          console.error("Error fetching user profile from Firestore:", error);
+          // Set standard profile from user object as fallback if offline or in error condition
+          setProfile({
+            uid: u.uid,
+            displayName: u.displayName || u.email?.split('@')[0] || 'User',
+            email: u.email,
+            role: 'fan',
+            isOffline: true
+          });
         }
       } else {
         setProfile(null);

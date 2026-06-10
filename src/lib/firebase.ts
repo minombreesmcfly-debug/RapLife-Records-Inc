@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentLocalCache } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import fallbackConfig from '../../firebase-applet-config.json';
 
@@ -22,7 +22,18 @@ export const auth = getAuth(app);
 
 // Use custom db ID if defined, otherwise let Firestore use the default or project's database ID
 const firestoreDbId = (metaEnv.VITE_FIREBASE_FIRESTORE_DATABASE_ID as string) || fallbackConfig.firestoreDatabaseId;
-export const db = firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestore(app);
+
+let firestoreInstance;
+try {
+  firestoreInstance = initializeFirestore(app, {
+    localCache: persistentLocalCache({})
+  }, firestoreDbId || undefined);
+} catch (e) {
+  console.warn("Could not initialize firestore with persistent cache, falling back...", e);
+  firestoreInstance = firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestore(app);
+}
+
+export const db = firestoreInstance;
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 

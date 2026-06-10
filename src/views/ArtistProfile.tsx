@@ -16,16 +16,25 @@ const ArtistProfileView = () => {
   useEffect(() => {
     const fetchArtist = async () => {
       if (!uid) return;
-      const docRef = doc(db, 'users', uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setArtist(docSnap.data());
-      }
+      try {
+        const docRef = doc(db, 'users', uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setArtist(docSnap.data());
+        }
 
-      const q = query(collection(db, 'tracks'), where('artistId', '==', uid), orderBy('createdAt', 'desc'));
-      const trackSnap = await getDocs(q);
-      setTracks(trackSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
+        try {
+          const q = query(collection(db, 'tracks'), where('artistId', '==', uid), orderBy('createdAt', 'desc'));
+          const trackSnap = await getDocs(q);
+          setTracks(trackSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        } catch (trackError) {
+          console.error("Error fetching tracks for artist profile:", trackError);
+        }
+      } catch (err) {
+        console.error("Error fetching artist profile:", err);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchArtist();
   }, [uid]);

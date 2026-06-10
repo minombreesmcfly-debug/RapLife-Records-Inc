@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { User, Mic2, ArrowRight, Disc, Sparkles, Upload, Image as ImageIcon, Check, X, AlertCircle } from 'lucide-react';
 
@@ -10,10 +10,14 @@ const ProfileSetupView = () => {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
-  const [role, setRole] = useState<'fan' | 'artist'>('fan');
+  const [role, setRole] = useState<string>('fan');
   const [category, setCategory] = useState('');
   const [plan, setPlan] = useState<'rookie' | 'pro' | 'fan'>('fan');
   const [spotifyUrl, setSpotifyUrl] = useState('');
+  const [favSong1, setFavSong1] = useState('');
+  const [favSong2, setFavSong2] = useState('');
+  const [favSong3, setFavSong3] = useState('');
+  const [showExtraRoles, setShowExtraRoles] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Avatar-specific onboarding state
@@ -35,6 +39,8 @@ const ProfileSetupView = () => {
   const handleFinish = async (accepted: boolean, selfieBase64: string | null) => {
     setSubmitting(true);
     try {
+      const songsList = [favSong1, favSong2, favSong3].filter(s => s.trim() !== '');
+      
       await setDoc(doc(db, 'users', user.uid), {
         uid: user.uid,
         email: user.email,
@@ -44,6 +50,7 @@ const ProfileSetupView = () => {
         category: category,
         plan: role === 'artist' ? plan : 'fan',
         spotifyUrl: role === 'artist' ? spotifyUrl : '',
+        spotifySongs: role === 'artist' ? songsList : [],
         points: 0,
         createdAt: serverTimestamp(),
         isPinned: false,
@@ -53,6 +60,22 @@ const ProfileSetupView = () => {
         avatarUrl: selfieBase64 || '', // Inicialmente es su foto real
         hasAvatar: !!selfieBase64,
       });
+
+      if (role === 'artist' && songsList.length > 0) {
+        try {
+          await addDoc(collection(db, 'spotify_requests'), {
+            userId: user.uid,
+            displayName: user?.displayName || 'Artista Sin Nombre',
+            spotifyUrl: spotifyUrl || '',
+            songs: songsList,
+            createdAt: new Date().toISOString(),
+            status: 'pending'
+          });
+        } catch (err) {
+          console.error("Error creating spotify request in firebase:", err);
+        }
+      }
+
       window.location.href = '/'; // Hard reload to refresh context
     } catch (e) {
       console.error(e);
@@ -60,9 +83,14 @@ const ProfileSetupView = () => {
     }
   };
 
-  const categories = {
+  const categories: Record<string, string[]> = {
     artist: ['RAPERO', 'BEATMAKER', 'PRODUCTOR', 'COMPOSITOR', 'FREESTYLER'],
-    fan: ['BAILARÍN', 'ME GUSTA EL RAP', 'BEATBOXER', 'GRAFFITERO', 'OYENTE ACTIVO']
+    fan: ['BAILARÍN', 'ME GUSTA EL RAP', 'BEATBOXER', 'GRAFFITERO', 'OYENTE ACTIVO'],
+    model: ['MODELO', 'ME GUSTA EL RAP'],
+    agent: ['RAPLIFE AGENT', 'ME GUSTA EL RAP'],
+    graffiti: ['GRAFFITI', 'ME GUSTA EL RAP'],
+    manager: ['MANAGER', 'ME GUSTA EL RAP'],
+    music: ['MUSIC', 'ME GUSTA EL RAP']
   };
 
   const plans = [
@@ -144,7 +172,8 @@ const ProfileSetupView = () => {
               <p className="text-lg text-gray-500 font-bold uppercase tracking-widest italic underline decoration-brand-yellow decoration-2 underline-offset-8">¿QUÉ ERES EN LA CALLE?</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl mx-auto">
+              {/* FAN */}
               <button 
                 onClick={() => { setRole('fan'); setPlan('fan'); }}
                 className={`p-8 md:p-10 rounded-[2.5rem] border-4 transition-all flex flex-col items-center gap-5 relative overflow-hidden group ${role === 'fan' ? 'border-brand-yellow bg-brand-yellow/5 shadow-glow scale-[1.02]' : 'border-white/5 hover:border-white/20 bg-white/[0.02]'}`}
@@ -158,6 +187,7 @@ const ProfileSetupView = () => {
                 </div>
               </button>
 
+              {/* ARTIST */}
               <button 
                 onClick={() => setRole('artist')}
                 className={`p-8 md:p-10 rounded-[2.5rem] border-4 transition-all flex flex-col items-center gap-5 relative overflow-hidden group ${role === 'artist' ? 'border-brand-yellow bg-brand-yellow/5 shadow-glow scale-[1.02]' : 'border-white/5 hover:border-white/20 bg-white/[0.02]'}`}
@@ -166,15 +196,106 @@ const ProfileSetupView = () => {
                   <Mic2 size={40} />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-black italic uppercase tracking-tight">ARTISTA</h3>
+                  <h3 className="text-2xl font-black italic uppercase tracking-tight">RAPLIFE ARTIST</h3>
                   <p className="text-xs text-gray-500 font-bold uppercase mt-2 leading-relaxed">Raperos, beatmakers y productores. Sube tu música a la radio.</p>
                 </div>
               </button>
             </div>
 
+            {!showExtraRoles ? (
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExtraRoles(true)}
+                  className="px-6 py-3.5 bg-neutral-900 border border-neutral-800 text-[10px] font-black uppercase text-brand-yellow italic tracking-wider rounded-xl hover:bg-neutral-850 active:scale-95 transition-all cursor-pointer shadow-lg"
+                >
+                  ✨ ¿ERES MODELO, AGENTE O DE OTRA RAMA? VER MÁS OPCIONES
+                </button>
+              </div>
+            ) : (
+              <motion.div 
+                initial={{ opacity: 0, y: 15 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                className="space-y-6 pt-2 border-t border-white/5 max-w-4xl mx-auto"
+              >
+                <p className="text-xs text-brand-yellow font-black uppercase tracking-widest italic">— SECTOR CREATIVO & EMBABAJADORES —</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 w-full">
+                  {/* MODEL */}
+                  <button 
+                    onClick={() => { setRole('model'); setPlan('fan'); }}
+                    className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 relative overflow-hidden group ${role === 'model' ? 'border-brand-yellow bg-brand-yellow/5 shadow-glow scale-[1.02]' : 'border-white/5 hover:border-white/10 bg-white/[0.02]'}`}
+                  >
+                     <div className={`p-3 rounded-xl transition-all shadow-xl ${role === 'model' ? 'bg-brand-yellow text-black' : 'bg-white/5'}`}>
+                      <Sparkles size={20} />
+                    </div>
+                    <div className="text-center">
+                      <h4 className="text-sm font-black italic uppercase">MODEL</h4>
+                      <p className="text-[9px] text-gray-500 font-bold mt-1 uppercase leading-snug">Modelos de marca y alta moda urbana.</p>
+                    </div>
+                  </button>
+
+                  {/* AGENT */}
+                  <button 
+                    onClick={() => { setRole('agent'); setPlan('fan'); }}
+                    className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 relative overflow-hidden group ${role === 'agent' ? 'border-brand-yellow bg-brand-yellow/5 shadow-glow scale-[1.02]' : 'border-white/5 hover:border-white/10 bg-white/[0.02]'}`}
+                  >
+                     <div className={`p-3 rounded-xl transition-all shadow-xl ${role === 'agent' ? 'bg-brand-yellow text-black' : 'bg-white/5'}`}>
+                      <User size={20} />
+                    </div>
+                    <div className="text-center">
+                      <h4 className="text-sm font-black italic uppercase">RAPLIFE AGENT</h4>
+                      <p className="text-[9px] text-gray-500 font-bold mt-1 uppercase leading-snug">Agentes de talentos y relaciones públicas.</p>
+                    </div>
+                  </button>
+
+                  {/* GRAFFITI */}
+                  <button 
+                    onClick={() => { setRole('graffiti'); setPlan('fan'); }}
+                    className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 relative overflow-hidden group ${role === 'graffiti' ? 'border-brand-yellow bg-brand-yellow/5 shadow-glow scale-[1.02]' : 'border-white/5 hover:border-white/10 bg-white/[0.02]'}`}
+                  >
+                     <div className={`p-3 rounded-xl transition-all shadow-xl ${role === 'graffiti' ? 'bg-brand-yellow text-black' : 'bg-white/5'}`}>
+                      <ImageIcon size={20} />
+                    </div>
+                    <div className="text-center">
+                      <h4 className="text-sm font-black italic uppercase">GRAFFITI</h4>
+                      <p className="text-[9px] text-gray-500 font-bold mt-1 uppercase leading-snug">Artistas murales y grafiteros.</p>
+                    </div>
+                  </button>
+
+                  {/* MANAGER */}
+                  <button 
+                    onClick={() => { setRole('manager'); setPlan('fan'); }}
+                    className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 relative overflow-hidden group ${role === 'manager' ? 'border-brand-yellow bg-brand-yellow/5 shadow-glow scale-[1.02]' : 'border-white/5 hover:border-white/10 bg-white/[0.02]'}`}
+                  >
+                     <div className={`p-3 rounded-xl transition-all shadow-xl ${role === 'manager' ? 'bg-brand-yellow text-black' : 'bg-white/5'}`}>
+                      <Disc size={20} />
+                    </div>
+                    <div className="text-center">
+                      <h4 className="text-sm font-black italic uppercase">MANAGER</h4>
+                      <p className="text-[9px] text-gray-500 font-bold mt-1 uppercase leading-snug">Gestión y representantes de artistas.</p>
+                    </div>
+                  </button>
+
+                  {/* MUSIC */}
+                  <button 
+                    onClick={() => { setRole('music'); setPlan('fan'); }}
+                    className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 relative overflow-hidden group ${role === 'music' ? 'border-brand-yellow bg-brand-yellow/5 shadow-glow scale-[1.02]' : 'border-white/5 hover:border-white/10 bg-white/[0.02]'}`}
+                  >
+                     <div className={`p-3 rounded-xl transition-all shadow-xl ${role === 'music' ? 'bg-brand-yellow text-black' : 'bg-white/5'}`}>
+                      <Mic2 size={20} />
+                    </div>
+                    <div className="text-center">
+                      <h4 className="text-sm font-black italic uppercase">MUSIC</h4>
+                      <p className="text-[9px] text-gray-500 font-bold mt-1 uppercase leading-snug">DJs de casa y distribuidores independientes.</p>
+                    </div>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
             <button 
               onClick={() => setStep(2)}
-              className="w-full md:w-auto px-12 py-5 bg-brand-yellow text-black font-black italic text-xl uppercase tracking-tighter rounded-xl hover:scale-105 transition-all flex items-center justify-center gap-4 mx-auto group"
+              className="w-full md:w-auto px-12 py-5 bg-brand-yellow text-black font-black italic text-xl uppercase tracking-tighter rounded-xl hover:scale-105 transition-all flex items-center justify-center gap-4 mx-auto group cursor-pointer"
             >
               CONTINUAR <ArrowRight size={24} className="group-hover:translate-x-2 transition-transform" />
             </button>
@@ -195,7 +316,7 @@ const ProfileSetupView = () => {
             </div>
 
             <div className="flex flex-wrap justify-center gap-4">
-              {categories[role].map(cat => (
+              {(categories[role] || []).map(cat => (
                 <button
                   key={cat}
                   onClick={() => setCategory(cat)}
@@ -207,20 +328,56 @@ const ProfileSetupView = () => {
             </div>
 
             {role === 'artist' && (
-              <div className="w-full max-w-xl mx-auto space-y-2 text-left bg-black/40 p-6 rounded-3xl border border-white/5">
-                <label className="text-[10px] font-black tracking-widest text-[#a1a1a1] uppercase block">
-                  🎨 TU ENLACE DE ARTISTA EN SPOTIFY (OPCIONAL)
-                </label>
-                <input 
-                  type="url"
-                  placeholder="https://open.spotify.com/artist/..."
-                  className="w-full bg-neutral-900 border border-neutral-800 p-4 rounded-xl text-xs text-white focus:border-brand-yellow outline-none font-bold"
-                  value={spotifyUrl}
-                  onChange={(e) => setSpotifyUrl(e.target.value)}
-                />
-                <p className="text-[9px] text-[#555] font-black uppercase mt-1 leading-snug">
-                  Asocia tu canal original para que tus fans puedan escucharte en las consolas y playlists de RapLife Records.
-                </p>
+              <div className="w-full max-w-xl mx-auto space-y-4 text-left bg-black/40 p-6 rounded-3xl border border-white/5">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black tracking-widest text-[#a1a1a1] uppercase block">
+                    🎨 TU ENLACE DE ARTISTA EN SPOTIFY (OPCIONAL)
+                  </label>
+                  <input 
+                    type="url"
+                    placeholder="https://open.spotify.com/artist/..."
+                    className="w-full bg-neutral-900 border border-neutral-800 p-4 rounded-xl text-xs text-white focus:border-brand-yellow outline-none font-bold"
+                    value={spotifyUrl}
+                    onChange={(e) => setSpotifyUrl(e.target.value)}
+                  />
+                  <p className="text-[9px] text-[#555] font-black uppercase mt-1 leading-snug">
+                    Asocia tu canal original para que tus fans puedan escucharte en las consolas y playlists de RapLife Records.
+                  </p>
+                </div>
+
+                <div className="h-px bg-white/5 my-4" />
+
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black tracking-widest text-[#a1a1a1] uppercase block text-brand-yellow">
+                    🎵 TUS TRES CANCIONES FAVORITAS PARA LA PLAYLIST OFICIAL
+                  </label>
+                  <p className="text-[9px] text-gray-500 font-bold uppercase leading-relaxed mb-2">
+                    Ingresa tus 3 mejores canciones para agregarlas a la playlist oficial de RapLife Records en Spotify.
+                  </p>
+                  <div className="space-y-2">
+                    <input 
+                      type="text"
+                      placeholder="Canción 1 (Título - Artista / Enlace)"
+                      className="w-full bg-neutral-900 border border-neutral-800 p-3 rounded-xl text-xs text-white focus:border-brand-yellow outline-none font-bold"
+                      value={favSong1}
+                      onChange={(e) => setFavSong1(e.target.value)}
+                    />
+                    <input 
+                      type="text"
+                      placeholder="Canción 2 (Título - Artista / Enlace)"
+                      className="w-full bg-neutral-900 border border-neutral-800 p-3 rounded-xl text-xs text-white focus:border-brand-yellow outline-none font-bold"
+                      value={favSong2}
+                      onChange={(e) => setFavSong2(e.target.value)}
+                    />
+                    <input 
+                      type="text"
+                      placeholder="Canción 3 (Título - Artista / Enlace)"
+                      className="w-full bg-neutral-900 border border-neutral-800 p-3 rounded-xl text-xs text-white focus:border-brand-yellow outline-none font-bold"
+                      value={favSong3}
+                      onChange={(e) => setFavSong3(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
