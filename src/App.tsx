@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { MusicProvider, useMusic } from './context/MusicContext';
 import { Home, User, Radio, Gamepad2, Settings, LogIn, LogOut, Mic2, Heart, PlusCircle, ShieldCheck, Play, Upload, Volume2, VolumeX, Shirt, X, AlertTriangle, ExternalLink, Compass, Monitor, Smartphone } from 'lucide-react';
@@ -160,22 +160,46 @@ const LandingPage = () => (
 );
 
 const AppContent = () => {
-  const { user, profile, isAdmin } = useAuth();
+  const { user, profile, loading, isAdmin } = useAuth();
   const { currentTrack, isMuted, toggleMute } = useMusic();
   const [loginError, setLoginError] = React.useState<any | null>(null);
   const [isLoginPending, setIsLoginPending] = React.useState(false);
   const [showLoginModal, setShowLoginModal] = React.useState(false);
+  
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Automatic redirect if logged in but no profile exists
+  React.useEffect(() => {
+    if (!loading && user && !profile && location.pathname !== '/profile-setup') {
+      console.log("Logged in but no profile found/completed. Automatically redirecting to Profile Setup onboarding...");
+      navigate('/profile-setup');
+    }
+  }, [user, profile, loading, location.pathname, navigate]);
 
   // Check for redirect sign-in results on app mount
   React.useEffect(() => {
     const checkRedirect = async () => {
       try {
         const result = await getRedirectResultHelper();
+        const wasPending = sessionStorage.getItem('pending_login_redirect');
+
         if (result) {
           console.log("Successfully logged in via redirect! User:", result.user);
+          sessionStorage.removeItem('pending_login_redirect');
+        } else if (wasPending) {
+          console.warn("Redirect callback finished but returned no user credentials. Browser cookie/privacy constraints detected.");
+          sessionStorage.removeItem('pending_login_redirect');
+          
+          // Trigger the diagnostic modal with clean, actionable advice
+          setLoginError({
+            code: 'auth/cookie-or-privacy-block',
+            message: 'Tu navegador móvil (Safari/iOS) o modo privado bloqueó las cookies necesarias para completar el login por redirección. Por favor, intenta de nuevo usando el botón de "Método Popup/Ventana" o desactiva "Prevenir seguimiento entre sitios" en los Ajustes de tu Safari.'
+          });
         }
       } catch (err: any) {
         console.error("Firebase redirect login error on load:", err);
+        sessionStorage.removeItem('pending_login_redirect');
         setLoginError(err);
       }
     };
@@ -205,6 +229,7 @@ const AppContent = () => {
     setIsLoginPending(true);
     setShowLoginModal(false);
     try {
+      sessionStorage.setItem('pending_login_redirect', 'true');
       await signInWithGoogleRedirect();
     } catch (err: any) {
       console.error("Firebase Redirect Login Error details:", err);
@@ -218,11 +243,20 @@ const AppContent = () => {
     setIsLoginPending(true);
     
     try {
-      console.log("Triggering Google login redirection...");
-      await signInWithGoogleRedirect();
-    } catch (err: any) {
-      console.error("Direct Google redirect login error:", err);
-      setLoginError(err);
+      console.log("Attempting direct Google Popup Login first (highly recommended for Safari/iOS)...");
+      await signInWithGoogle();
+    } catch (popupErr: any) {
+      console.warn("Popup blocked or failed, falling back to Redirect login method...", popupErr);
+      try {
+        sessionStorage.setItem('pending_login_redirect', 'true');
+        console.log("Triggering Google login redirection fallback...");
+        await signInWithGoogleRedirect();
+      } catch (err: any) {
+        console.error("Fallback Google redirect login error:", err);
+        setLoginError(err);
+        setIsLoginPending(false);
+      }
+    } finally {
       setIsLoginPending(false);
     }
   };
@@ -384,7 +418,30 @@ const AppContent = () => {
               </div>
 
               <div className="space-y-4">
-                {loginError?.code === 'auth/unauthorized-domain' || (loginError?.message && loginError.message.includes('unauthorized-domain')) ? (
+                {loginError?.code === 'auth/cookie-or-privacy-block' ? (
+                  <>
+                    <p className="text-xs uppercase font-black tracking-wider text-brand-yellow">
+                      🔒 ¡RESTRICCIÓN DE PRIVACIDAD O COOKIES EN TU DISPOSITIVO!
+                    </p>
+                    <div className="space-y-3 text-xs text-gray-300 font-medium leading-relaxed">
+                      <p>
+                        Por seguridad, los navegadores táctiles de Apple (<strong>Safari en iOS</strong>) o pestañas de incógnito bloquean cookies externas, impidiendo que Firebase recuerde tu cuenta al regresar.
+                      </p>
+                      
+                      <div className="bg-black/50 p-4 rounded-2xl border border-brand-yellow/15 space-y-2">
+                        <p className="text-[10px] font-black uppercase text-brand-yellow tracking-wider">
+                          ✔️ LA SOLUCIÓN MÁS VELOZ:
+                        </p>
+                        <p className="text-[10px] text-gray-400">
+                          Haz clic en el botón inferior que dice <strong>"Usar Popup"</strong>. Al hacerlo de este modo, se abrirá un panel directo que inicia sesión inmediatamente sin recargar tu página y sin trabas de cookies.
+                        </p>
+                        <p className="text-[10px] text-gray-400 italic">
+                          Opcional: Ve a <strong>Ajustes &gt; Safari</strong> en tu iPhone y desactiva la casilla <strong>"Prevenir seguimiento entre sitios"</strong> para habilitar la redirección estándar.
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : loginError?.code === 'auth/unauthorized-domain' || (loginError?.message && loginError.message.includes('unauthorized-domain')) ? (
                   <>
                     <p className="text-xs uppercase font-black tracking-wider text-brand-yellow">
                       ⚠️ ¡Dominio no autorizado o Configuración incorrecta en Vercel!
