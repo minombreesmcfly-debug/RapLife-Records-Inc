@@ -63,6 +63,37 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["image", "outfitPrompt", "createdBy"]
+    },
+    "Redemption": {
+      "title": "Redemption",
+      "description": "Points spent by users to redeem specific rewards.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userDisplayName": { "type": "string" },
+        "rewardTitle": { "type": "string" },
+        "pointsSpent": { "type": "number" },
+        "claimedAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "claimed", "rejected"] }
+      },
+      "required": ["userId", "rewardTitle", "pointsSpent"]
+    },
+    "PlaylistApplication": {
+      "title": "PlaylistApplication",
+      "description": "Applications by artists to get their songs added to the official RapLife Spotify playlist.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "artistName": { "type": "string" },
+        "spotifyLink": { "type": "string" },
+        "socialNetworkLink": { "type": "string" },
+        "pitchMessage": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["artistName", "spotifyLink"]
     }
   },
   "firestore": {
@@ -81,6 +112,14 @@
     "studioMasterpieces": {
       "schema": "StudioMasterpiece",
       "description": "Virtual customized outfit designs saved by admins and premium artists."
+    },
+    "redemptions": {
+      "schema": "Redemption",
+      "description": "Collection of spent rewards."
+    },
+    "playlist_applications": {
+      "schema": "PlaylistApplication",
+      "description": "Collection of applications submitted by artists to enter the Spotify playlist."
     }
   }
 }

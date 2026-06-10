@@ -52,12 +52,34 @@ service cloud.firestore {
       allow update: if (isAdmin() || isOwner(userId)) && (
         // Admin can update anything (e.g. isPinned)
         isAdmin() || (
-          // Owner can update everything EXCEPT role and isPinned
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL', 'bio', 'spotifyUrl', 'appleMusicUrl', 'instagramUrl', 'points', 'highScore'])
+          // Owner can update everything EXCEPT role, isPinned, uid, and email
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'displayName', 'photoURL', 'bio', 'spotifyUrl', 'appleMusicUrl', 'instagramUrl', 
+            'points', 'highScore', 'acceptedEcosystem', 'updatedAt', 'avatarSelfieUrl', 
+            'avatarUrl', 'hasAvatar', 'geminiApiKey', 'category', 'plan'
+          ])
         )
       );
       
       allow delete: if isAdmin();
+    }
+
+    // Redemptions Validation
+    function isValidRedemption(data) {
+      return data.keys().hasAll(['userId', 'rewardTitle', 'pointsSpent']) &&
+             data.userId == request.auth.uid &&
+             data.rewardTitle is string && data.rewardTitle.size() <= 200 &&
+             data.pointsSpent is number && data.pointsSpent >= 0 &&
+             (!('status' in data) || data.status in ['pending', 'claimed', 'rejected']) &&
+             (!('userEmail' in data) || data.userEmail is string) &&
+             (!('userDisplayName' in data) || data.userDisplayName is string);
+    }
+
+    match /redemptions/{redemptionId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && isAdmin(); // Only admins can list all redemptions
+      allow create: if isSignedIn() && isValidRedemption(request.resource.data);
+      allow update, delete: if isAdmin();
     }
 
     // Track Validation
@@ -109,6 +131,12 @@ service cloud.firestore {
       allow get, list, delete: if isAdmin();
       
       allow create: if isSignedIn() && isValidStudioMasterpiece(request.resource.data);
+    }
+
+    // Playlist Applications Validation
+    match /playlist_applications/{appId} {
+      allow create: if true; // Let anyone submit a playlist application
+      allow read, update, delete: if isAdmin();
     }
   }
 }

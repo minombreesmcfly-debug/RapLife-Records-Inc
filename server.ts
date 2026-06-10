@@ -9,14 +9,26 @@ import { GoogleGenAI } from '@google/genai';
 
 // Lazy loaded Gemini API initialization
 let aiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI {
+function getGeminiClient(userKey?: string): GoogleGenAI {
+  const finalKey = userKey || process.env.GEMINI_API_KEY;
+  if (!finalKey) {
+    throw new Error('GEMINI_API_KEY key is missing in your Secrets. Please configure it in Settings > Secrets or set a personal key in Profile Settings.');
+  }
+  
+  if (userKey) {
+    return new GoogleGenAI({
+      apiKey: userKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build'
+        }
+      }
+    });
+  }
+
   if (!aiClient) {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) {
-      throw new Error('GEMINI_API_KEY key is missing in your Secrets. Please configured it in Settings > Secrets.');
-    }
     aiClient = new GoogleGenAI({
-      apiKey: key,
+      apiKey: finalKey,
       httpOptions: {
         headers: {
           'User-Agent': 'aistudio-build'
@@ -74,6 +86,8 @@ async function startServer() {
     console.log(`[API] Triggered /api/studio/analyze`);
     try {
       const { image, mimeType } = req.body;
+      const userApiKey = req.headers['x-gemini-api-key'] as string | undefined;
+      
       if (!image) {
         return res.status(400).json({ error: 'Falta la imagen para analizar.' });
       }
@@ -86,7 +100,7 @@ async function startServer() {
 
       let gemini;
       try {
-        gemini = getGeminiClient();
+        gemini = getGeminiClient(userApiKey);
       } catch (err: any) {
         console.warn(`[API] Gemini client initialization warning: ${err.message}. Using creative preview mode.`);
         return res.json({
@@ -148,15 +162,17 @@ Output ONLY the JSON array, with no markdown code block wraps.`;
     console.log(`[API] Triggered /api/studio/render-outfits`);
     try {
       const { image, mimeType, people } = req.body;
+      const userApiKey = req.headers['x-gemini-api-key'] as string | undefined;
+
       if (!image) {
         return res.status(400).json({ error: 'Falta la imagen original' });
       }
 
       let gemini;
       try {
-        gemini = getGeminiClient();
+        gemini = getGeminiClient(userApiKey);
       } catch (err: any) {
-        throw new Error('Sin clave Gemini configurada en Settings > Secrets.');
+        throw new Error('Sin clave Gemini configurada en Settings > Secrets o tu perfil de usuario.');
       }
 
       // Base64 cleaning
@@ -165,37 +181,66 @@ Output ONLY the JSON array, with no markdown code block wraps.`;
         base64Data = image.split('base64,')[1];
       }
 
-      const outfitsDesc = people
-        .map((p: any) => `- El personaje "${p.id}" (${p.description}) que originalmente vestía "${p.originalOutfit}" ahora debe llevar puesto: "${p.newOutfit || 'Su vestuario original'}"`)
-        .join('\n');
+      const parts: any[] = [
+        {
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType || 'image/jpeg'
+          }
+        }
+      ];
+
+      let outlinesDesc = '';
+      let referenceImgCount = 0;
+
+      if (people && Array.isArray(people)) {
+        people.forEach((p: any) => {
+          let referenceMeta = '';
+          if (p.clothesImage) {
+            referenceImgCount++;
+            let refBase64 = p.clothesImage;
+            if (refBase64.includes('base64,')) {
+              refBase64 = refBase64.split('base64,')[1];
+            }
+            parts.push({
+              inlineData: {
+                data: refBase64,
+                mimeType: p.clothesImageMime || 'image/jpeg'
+              }
+            });
+            referenceMeta = `utilizando exactamente la prenda, zapatillas o estilo visual mostrado en la "Imagen de Referencia #${referenceImgCount}" adjunta como entrada número ${referenceImgCount + 1}`;
+          }
+
+          let detailStr = p.newOutfit || '';
+          outlinesDesc += `- El personaje con ID "${p.id}" (${p.description}) que originalmente vestía "${p.originalOutfit}" ahora debe llevar puesto: ${referenceMeta ? `${referenceMeta}. ` : ''}${detailStr ? `Detalles adicionales: "${detailStr}"` : 'Su ropa original'}\n`;
+        });
+      }
 
       const promptStr = `You are an expert virtual clothing and outfit stylist. 
-Your task is to modify ONLY the clothing of the specified individuals in the uploaded picture.
+Your task is to modify ONLY the clothing of the specified individuals in the uploaded picture (the FIRST image).
+
+Input image structure:
+- Image #1 (the 1st part) is the original scene containing the characters.
+${referenceImgCount > 0 ? `- The subsequent ${referenceImgCount} images are reference clothes or sneakers uploaded by the user, numbered Reference Image #1 to #${referenceImgCount} respectively.` : ''}
 
 MODIFICATIONS TO APPLY:
-${outfitsDesc}
+${outlinesDesc}
 
 CRITICAL STYLING RULES:
 1. Poses, facial features, expressions, eye colors, mouths, hair, head accessories, hands, body proportions, and background environment must remain 100% IDENTICAL and untouched.
-2. Only change the fabrics, styles, colors, and textures of the apparel (shirts, jackets, hoodies, chains, or hats) worn on the bodies.
+2. Only change the fabrics, styles, colors, and textures of the apparel (shirts, jackets, hoodies, shoes/sneakers, pants, chains, or hats) worn on the bodies.
 3. The newly generated outfits must match the lighting, perspective, shadows, and overall high-quality realistic photo quality.
 4. Output the newly updated image.`;
 
-      console.log(`[API] Sending tryon prompt to gemini-2.5-flash-image...`);
+      parts.push({ text: promptStr });
+
+      console.log(`[API] Sending tryon prompt to gemini-2.5-flash-image with ${referenceImgCount} reference clothes images...`);
 
       const response = await gemini.models.generateContent({
         model: 'gemini-2.5-flash-image',
-        contents: [
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: mimeType || 'image/jpeg'
-            }
-          },
-          {
-            text: promptStr
-          }
-        ]
+        contents: {
+          parts: parts
+        }
       });
 
       let generatedBase64 = '';
@@ -218,8 +263,20 @@ CRITICAL STYLING RULES:
 
     } catch (error: any) {
       console.error('[API] Error in /api/studio/render-outfits:', error);
+      let errorMsg = error.message || 'Error en la conexión con la API de generación de Imagen.';
+      
+      const isQuotaError = error.status === 'RESOURCE_EXHAUSTED' || 
+                           error.status === 429 ||
+                           String(error).includes('RESOURCE_EXHAUSTED') ||
+                           String(error).includes('Quota exceeded') ||
+                           String(error).includes('429');
+
+      if (isQuotaError) {
+        errorMsg = 'QUOTA_EXHAUSTED: Se ha agotado el límite de solicitudes gratuitas de la API de imagen de Gemini. Por favor, selecciona un plan de pago o cambia a una clave con facturación habilitada en AI Studio.';
+      }
+
       res.status(500).json({ 
-        error: error.message || 'Error en la conexión con la API de generación de Imagen.'
+        error: errorMsg
       });
     }
   });

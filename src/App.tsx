@@ -18,6 +18,7 @@ import ProfileSettingsView from './views/ProfileSettings';
 import UploadTrackView from './views/UploadTrack';
 import SpotifyTurntable from './components/SpotifyTurntable';
 import StudioView from './views/Studio';
+import SponsoredCarousel from './components/SponsoredCarousel';
 
 const PlayerBar = () => {
   const { currentTrack, isPlaying, togglePlay, nextTrack } = useMusic();
@@ -127,6 +128,11 @@ const RadioStrip = () => {
 
 const LandingPage = () => (
   <div className="max-w-6xl mx-auto px-2 md:px-0 pt-4 md:pt-6 space-y-20 md:space-y-32">
+    {/* SPONSOR DE ARTISTAS SLIDES */}
+    <div className="w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw]">
+      <SponsoredCarousel />
+    </div>
+
     {/* GAME SECTION (PLATFORMER) */}
     <section id="game" className="scroll-mt-24 md:scroll-mt-32">
       <SectionHeader title="DESAFÍO CALLEJERO" icon={Gamepad2} />
@@ -257,10 +263,10 @@ const AppContent = () => {
                   <span className="hidden md:inline">SUBIR</span>
                 </Link>
               )}
-              {(isAdmin || profile?.plan === 'premium' || profile?.role === 'artist') && (
+              {user && (
                 <Link to="/studio" className="chrome-button flex items-center gap-1 md:gap-2 px-2 py-1.5 md:px-4 md:py-3 rounded-lg md:rounded-xl text-black font-black uppercase text-[8px] md:text-[10px] shadow-lg hover:scale-105 transition-all">
-                  <Shirt size={11} />
-                  <span className="hidden md:inline">ESTUDIO VESTUARIO</span>
+                  <User size={11} />
+                  <span className="hidden md:inline">AVATAR RAPLIFE</span>
                 </Link>
               )}
               {isAdmin && (

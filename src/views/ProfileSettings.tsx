@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Settings, Save, Instagram, Music, MessageSquare, User, Globe, AlertCircle } from 'lucide-react';
+import { Settings, Save, Instagram, Music, MessageSquare, User, Globe, AlertCircle, Key } from 'lucide-react';
 
 const ProfileSettingsView = () => {
   const { user, profile } = useAuth();
@@ -16,6 +16,7 @@ const ProfileSettingsView = () => {
     instagramUrl: '',
     spotifyUrl: '',
     appleMusicUrl: '',
+    geminiApiKey: '',
   });
 
   useEffect(() => {
@@ -26,6 +27,7 @@ const ProfileSettingsView = () => {
         instagramUrl: profile.instagramUrl || '',
         spotifyUrl: profile.spotifyUrl || '',
         appleMusicUrl: profile.appleMusicUrl || '',
+        geminiApiKey: profile.geminiApiKey || '',
       });
     }
   }, [profile]);
@@ -119,6 +121,24 @@ const ProfileSettingsView = () => {
                    value={formData.appleMusicUrl}
                    onChange={e => setFormData({...formData, appleMusicUrl: e.target.value})}
                  />
+              </div>
+
+              <div className="border border-white/5 bg-white/[0.02] p-4 rounded-2xl relative space-y-3">
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-brand-yellow uppercase tracking-widest flex items-center gap-2">
+                      <Key size={12}/> CLAVE API DE GEMINI PERSONAL (OPCIONAL)
+                    </label>
+                    <input 
+                      type="password" 
+                      placeholder="AIzaSy..."
+                      className="w-full bg-black/50 border border-brand-yellow/10 focus:border-brand-yellow p-4 rounded-xl outline-none text-xs font-mono"
+                      value={formData.geminiApiKey}
+                      onChange={e => setFormData({...formData, geminiApiKey: e.target.value})}
+                    />
+                 </div>
+                 <p className="text-[9px] text-gray-400 leading-relaxed font-bold uppercase tracking-tight">
+                   💡 ¿Quieres usar tus propios limites gratuitos? Crea una clave sin cargo en <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" className="text-brand-yellow hover:underline">Google AI Studio</a> y guardala aquí para no consumir la cuota general.
+                 </p>
               </div>
            </div>
         </div>

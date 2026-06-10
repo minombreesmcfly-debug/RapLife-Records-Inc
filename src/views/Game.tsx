@@ -1,29 +1,240 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, RotateCcw, Volume2, VolumeX, ChevronLeft, ChevronRight, ChevronUp, Trophy, Gift, Star, Award, Medal } from 'lucide-react';
+import { Play, RotateCcw, Volume2, VolumeX, ChevronLeft, ChevronRight, ChevronUp, Trophy, Gift, Star, Award, Medal, Loader2, CheckCircle, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
-import { collection, query, orderBy, limit, getDocs, doc, updateDoc, increment, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, doc, updateDoc, increment, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 
 const RewardsTable = () => {
+  const { user } = useAuth();
+  const [userPoints, setUserPoints] = useState<number | null>(null);
+  const [loadingPoints, setLoadingPoints] = useState(true);
+  const [confirmingReward, setConfirmingReward] = useState<any | null>(null);
+  const [claimingState, setClaimingState] = useState<'idle' | 'claiming' | 'success' | 'error'>('idle');
+  const [claimingError, setClaimingError] = useState<string | null>(null);
+
   const rewards = [
-    { pts: '100,000', icon: Trophy, title: 'CAMEO / VIDEO MUSICAL', desc: 'Aparición oficial en un video de RapLife Records.' },
-    { pts: '7,770', icon: Gift, title: 'PRODUCTO TIKTOK STORE', desc: 'Gana un producto de nuestra tienda oficial.' },
-    { pts: '5,000', icon: Star, title: 'MENCIÓN EN STORIES', desc: 'Mención directa en nuestras redes oficiales.' }
+    { pts: 100000, display_pts: '100,000', icon: Trophy, title: 'CAMEO / VIDEO MUSICAL', desc: 'Aparición estelar y co-producción en el próximo videoclip oficial promocional de RapLife Records.' },
+    { pts: 50000, display_pts: '50,000', icon: Sparkles, title: 'CAMEO EN VIDEO DE RAP LIFE', desc: 'Aparición especial en un video oficial de la música y proyectos de Rap Life.' },
+    { pts: 5000, display_pts: '5,000', icon: Star, title: 'MENCIÓN EN STORIES', desc: 'Mención directa o promoción exclusiva en nuestras redes sociales e historias oficiales.' }
   ];
 
+  useEffect(() => {
+    if (!user) {
+      setLoadingPoints(false);
+      return;
+    }
+
+    const userRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(userRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setUserPoints(docSnap.data()?.points || 0);
+      } else {
+        setUserPoints(0);
+      }
+      setLoadingPoints(false);
+    }, (error) => {
+      console.error("Error watching user points:", error);
+      setLoadingPoints(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleClaimReward = async (reward: any) => {
+    if (!user) return;
+    setClaimingState('claiming');
+    setClaimingError(null);
+
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      const currentPoints = userSnap.data()?.points || 0;
+
+      if (currentPoints < reward.pts) {
+        setClaimingState('error');
+        setClaimingError('No tienes suficientes puntos para reclamar esta recompensa.');
+        return;
+      }
+
+      // Secure database operations:
+      // 1. Subtract points using increment(-pts)
+      await updateDoc(userRef, {
+        points: increment(-reward.pts)
+      });
+
+      // 2. Track redemption record in 'redemptions'
+      const redemptionId = `${user.uid}_${Date.now()}`;
+      await setDoc(doc(db, 'redemptions', redemptionId), {
+        userId: user.uid,
+        userEmail: user.email,
+        userDisplayName: userSnap.data()?.displayName || user.displayName || 'ANÓNIMO',
+        rewardTitle: reward.title,
+        pointsSpent: reward.pts,
+        claimedAt: new Date().toISOString(),
+        status: 'pending'
+      });
+
+      setClaimingState('success');
+    } catch (err: any) {
+      console.error("Error during redemption:", err);
+      setClaimingState('error');
+      setClaimingError(err?.message || 'Hubo un error al procesar el canje. Por favor inténtalo más tarde.');
+    }
+  };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8 w-full">
-      {rewards.map((r, i) => (
-        <div key={i} className="bg-black/40 border-2 border-boombox-gray p-5 rounded-3xl flex flex-col items-center text-center gap-2 hover:border-brand-yellow/50 transition-all group">
-          <div className="p-3 bg-brand-yellow/10 rounded-2xl group-hover:scale-110 transition-transform">
-            <r.icon className="text-brand-yellow" size={24} />
-          </div>
-          <p className="text-brand-yellow font-black italic text-xl leading-none">{r.pts} PTS</p>
-          <p className="text-[10px] font-black uppercase tracking-widest">{r.title}</p>
-          <p className="text-[9px] text-gray-500 font-bold uppercase leading-tight">{r.desc}</p>
+    <div className="w-full space-y-6">
+      {/* User Score Summary Header */}
+      {user && (
+        <div className="max-w-md mx-auto bg-black/60 border-2 border-brand-yellow/30 rounded-3xl p-4 text-center shadow-lg relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-2 h-full bg-brand-yellow" />
+          <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest leading-none">TU SALDO DE STREET-CRED</p>
+          {loadingPoints ? (
+            <div className="flex items-center justify-center gap-1.5 mt-1.5">
+              <Loader2 className="animate-spin text-brand-yellow" size={12} />
+              <span className="text-xs font-mono font-bold uppercase text-gray-500">Cargando puntos...</span>
+            </div>
+          ) : (
+            <p className="text-2xl font-black italic text-brand-yellow font-mono mt-1">
+              {userPoints?.toLocaleString() || 0} <span className="text-xs text-white">PTS</span>
+            </p>
+          )}
         </div>
-      ))}
+      )}
+
+      {/* Rewards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+        {rewards.map((r, i) => {
+          const hasEnough = userPoints !== null && userPoints >= r.pts;
+          return (
+            <div 
+              key={i} 
+              className={`bg-black/40 border-2 rounded-3xl p-5 flex flex-col items-center text-center gap-2 transition-all group relative ${
+                hasEnough 
+                  ? 'border-boombox-gray hover:border-brand-yellow shadow-[0_0_15px_rgba(248,251,2,0.05)]' 
+                  : 'border-white/5 opacity-80'
+              }`}
+            >
+              <div className={`p-3 rounded-2xl transition-transform group-hover:scale-110 ${
+                hasEnough ? 'bg-brand-yellow/10' : 'bg-white/5'
+              }`}>
+                <r.icon className={hasEnough ? "text-brand-yellow" : "text-gray-500"} size={24} />
+              </div>
+              <p className={`font-black italic text-xl leading-none ${hasEnough ? 'text-brand-yellow' : 'text-gray-500'}`}>
+                {r.display_pts} PTS
+              </p>
+              <p className="text-[10px] font-black uppercase tracking-widest">{r.title}</p>
+              <p className="text-[9px] text-gray-500 font-bold uppercase leading-tight flex-grow">{r.desc}</p>
+              
+              {user ? (
+                <button
+                  disabled={!hasEnough}
+                  onClick={() => {
+                    setConfirmingReward(r);
+                    setClaimingState('idle');
+                    setClaimingError(null);
+                  }}
+                  className={`mt-3 w-full py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border-2 ${
+                    hasEnough
+                      ? 'border-brand-yellow bg-brand-yellow text-black shadow-[0_0_15px_rgba(248,251,2,0.2)] hover:brightness-110 active:scale-95 cursor-pointer'
+                      : 'border-white/5 bg-black/40 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  {hasEnough ? 'CANJEAR' : 'NECESITAS MÁS PTS'}
+                </button>
+              ) : (
+                <p className="text-[8px] text-brand-yellow/60 font-black uppercase tracking-widest mt-3">INICIA SESIÓN PARA CANJEAR</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Confirmation & Status Overlay Modal */}
+      <AnimatePresence>
+        {confirmingReward && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50 rounded-[2.5rem]"
+          >
+            <motion.div 
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-[#151515] border-4 border-boombox-gray rounded-[2rem] p-6 max-w-sm w-full text-center relative overflow-hidden"
+            >
+              {claimingState === 'idle' && (
+                <>
+                  <div className="w-12 h-12 bg-brand-yellow/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <confirmingReward.icon className="text-brand-yellow" size={24} />
+                  </div>
+                  <h4 className="text-lg font-black italic uppercase text-white mb-2">¿CONFIRMAR CANJE?</h4>
+                  <p className="text-xs text-gray-300 mb-4 font-bold uppercase leading-relaxed">
+                    ¿Quieres canjear <span className="text-brand-yellow">{confirmingReward.display_pts} PTS</span> por <span className="text-white">"{confirmingReward.title}"</span>?
+                  </p>
+                  <div className="flex gap-3 justify-center">
+                    <button 
+                      onClick={() => setConfirmingReward(null)}
+                      className="px-5 py-2.5 rounded-xl border border-white/10 hover:border-white/20 text-gray-400 hover:text-white font-bold uppercase tracking-wider text-[10px] transition-all"
+                    >
+                      CANCELAR
+                    </button>
+                    <button 
+                      onClick={() => handleClaimReward(confirmingReward)}
+                      className="px-5 py-2.5 rounded-xl bg-brand-yellow text-black font-black uppercase tracking-wider text-[10px] shadow-lg hover:brightness-110 active:scale-95 transition-all"
+                    >
+                      SÍ, CANJEAR
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {claimingState === 'claiming' && (
+                <div className="py-6 flex flex-col items-center">
+                  <Loader2 className="animate-spin text-brand-yellow mb-4" size={32} />
+                  <p className="text-xs font-black uppercase tracking-widest text-brand-yellow">PROCESANDO RECOMPENSA...</p>
+                  <p className="text-[9px] text-gray-500 font-bold uppercase mt-1">Conectando con el sello de RapLife...</p>
+                </div>
+              )}
+
+              {claimingState === 'success' && (
+                <div className="py-4 flex flex-col items-center">
+                  <CheckCircle className="text-green-500 mb-4 animate-bounce" size={36} />
+                  <h4 className="text-base font-black italic uppercase text-white mb-2">¡CANJE RECOMPENSADO!</h4>
+                  <p className="text-xs text-gray-300 leading-relaxed font-bold uppercase mb-4">
+                    ¡Nos pondremos en contacto contigo en tu correo registrado <span className="text-brand-yellow">{user?.email}</span> para coordinar tu beneficio y agendar tu acción comercial!
+                  </p>
+                  <button 
+                    onClick={() => setConfirmingReward(null)}
+                    className="w-full py-2.5 rounded-xl bg-brand-yellow text-black font-black uppercase tracking-wider text-[10px] shadow-lg transition-all"
+                  >
+                    CONTINUAR JUGANDO
+                  </button>
+                </div>
+              )}
+
+              {claimingState === 'error' && (
+                <div className="py-4 flex flex-col items-center">
+                  <p className="text-3xl mb-4">❌</p>
+                  <h4 className="text-base font-black italic uppercase text-red-500 mb-2">ERROR EN EL PROCESO</h4>
+                  <p className="text-xs text-gray-300 leading-relaxed font-bold uppercase mb-4">
+                    {claimingError || 'Hubo un error con tu saldo o conexión.'}
+                  </p>
+                  <button 
+                    onClick={() => setConfirmingReward(null)}
+                    className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-black uppercase tracking-wider text-[10px] transition-all"
+                  >
+                    CERRAR
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -61,9 +272,23 @@ const Leaderboard = () => {
   );
 };
 
+const CHARACTERS = [
+  { id: 'biggie', name: 'Biggie', subtitle: 'The Notorious', description: 'Leyenda del East Coast. Peso pesado con flow insuperable.', prefix: 'player', avatarFallback: '#ffae00', bulletOffsetY: 35, bulletOffsetX: 0 },
+  { id: '2pac', name: '2Pac', subtitle: 'Makaveli', description: 'Poeta lírico de la West Coast. Rapidez mental, pasión y estilo legendario.', prefix: 'player2', avatarFallback: '#ff4444', bulletOffsetY: 22, bulletOffsetX: 6 },
+  { id: 'mcfly', name: 'McFly', subtitle: 'Fly Boy', description: 'Pionero futurista de RapLife. Ágil de pies, saltos propulsados y beats cósmicos.', prefix: 'player3', avatarFallback: '#9b5de5', bulletOffsetY: 28, bulletOffsetX: 2 }
+] as const;
+
 const GameView = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [selectedCharId, setSelectedCharId] = useState<'biggie' | '2pac' | 'mcfly'>('biggie');
+  const [showGuide, setShowGuide] = useState(false);
+  const selectedCharIdRef = useRef(selectedCharId);
+
+  useEffect(() => {
+    selectedCharIdRef.current = selectedCharId;
+  }, [selectedCharId]);
+
   const [gameState, setGameState] = useState<'idle' | 'playing' | 'gameOver'>('idle');
   const gameStateRef = useRef(gameState);
   const [score, setScore] = useState(0);
@@ -186,41 +411,67 @@ const GameView = () => {
   }, []);
 
   useEffect(() => {
-    const loadImages = () => {
-      const sources = {
-        idle: '/assets/player_idle.png',
-        walk: '/assets/player_walk.png',
-        jump: '/assets/player_jump.png',
-        shoot: '/assets/player_shoot.png',
-        jump_shoot: '/assets/player_jump_shoot.png'
-      };
-      
-      const loaded: { [key: string]: HTMLImageElement } = {};
-      let count = 0;
-      const keys = Object.keys(sources);
-      
-      keys.forEach(key => {
-        const img = new Image();
-        img.src = sources[key as keyof typeof sources];
-        img.onload = () => {
-          loaded[key] = img;
-          count++;
-          if (count === keys.length) {
-            spritesRef.current = loaded;
-            setImagesLoaded(true);
-          }
-        };
-        img.onerror = () => {
-          count++;
-          if (count === keys.length) {
-            spritesRef.current = loaded;
-            setImagesLoaded(true);
-          }
-        };
-      });
+    setImagesLoaded(false);
+    const activeChar = CHARACTERS.find(c => c.id === selectedCharId) || CHARACTERS[0];
+    const prefix = activeChar.prefix;
+
+    // Player assets
+    const playerSources = {
+      idle: `/assets/${prefix}_idle.png`,
+      walk: `/assets/${prefix}_walk.png`,
+      jump: `/assets/${prefix}_jump.png`,
+      shoot: `/assets/${prefix}_shoot.png`,
+      jump_shoot: `/assets/${prefix}_jump_shoot.png`
     };
-    loadImages();
-  }, []);
+
+    // Props & background assets (optional)
+    const optionalSources = {
+      bg_sky: '/assets/bg_sky.png',
+      bg_buildings: '/assets/bg_buildings.png',
+      bg_hills: '/assets/bg_hills.png',
+      tile_ground: '/assets/tile_ground.png',
+      tile_platform: '/assets/tile_platform.png',
+      enemy_walk: '/assets/enemy_walk.png'
+    };
+
+    const loaded: { [key: string]: HTMLImageElement } = {};
+    const totalRequired = Object.keys(playerSources).length;
+    let loadedRequiredCount = 0;
+
+    // Load required player assets
+    Object.entries(playerSources).forEach(([key, src]) => {
+      const img = new Image();
+      img.src = src;
+      img.onload = () => {
+        loaded[key] = img;
+        loadedRequiredCount++;
+        if (loadedRequiredCount === totalRequired) {
+          spritesRef.current = { ...spritesRef.current, ...loaded };
+          setImagesLoaded(true);
+        }
+      };
+      img.onerror = () => {
+        loadedRequiredCount++;
+        if (loadedRequiredCount === totalRequired) {
+          spritesRef.current = { ...spritesRef.current, ...loaded };
+          setImagesLoaded(true);
+        }
+      };
+    });
+
+    // Load optional background/prop assets
+    Object.entries(optionalSources).forEach(([key, src]) => {
+      const img = new Image();
+      img.src = src;
+      img.onload = () => {
+        spritesRef.current[key] = img;
+      };
+      img.onerror = () => {
+        delete spritesRef.current[key];
+      };
+    });
+
+  }, [selectedCharId]);
 
   // Sync ref with state
   useEffect(() => {
@@ -361,11 +612,17 @@ const GameView = () => {
     if (gameStateRef.current !== 'playing') return;
     const player = playerRef.current;
     player.shootTimer = 5; // Duración corta para que no interfiera con caminar
+    
+    // Buscar el personaje activo para obtener su alineación de disparo
+    const activeChar = CHARACTERS.find(c => c.id === selectedCharIdRef.current) || CHARACTERS[0];
+    const bulletOffsetY = activeChar.bulletOffsetY;
+    const bulletOffsetX = activeChar.bulletOffsetX;
+
     worldRef.current.bullets.push({
-      x: player.x + (player.facingRight ? player.width : 0),
-      y: player.y + 32, // Un poco más arriba (antes 36)
-      dx: player.facingRight ? 15 : -15,
-      radius: 8, // Balas un poco más grandes
+      x: player.x + (player.facingRight ? player.width + bulletOffsetX : -bulletOffsetX),
+      y: player.y + bulletOffsetY, // Centrado de bala vertical específico por personaje
+      dx: player.facingRight ? 16 : -16,
+      radius: 4, // Balas reducidas a la mitad de tamaño (antes 8)
       active: true
     });
   };
@@ -509,12 +766,16 @@ const GameView = () => {
         skyBot = '#0f2027';
     }
 
-    const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    sky.addColorStop(0, skyTop);
-    sky.addColorStop(0.5, skyMid);
-    sky.addColorStop(1, skyBot);
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (spritesRef.current.bg_sky && spritesRef.current.bg_sky.complete && spritesRef.current.bg_sky.naturalWidth > 0) {
+        ctx.drawImage(spritesRef.current.bg_sky, 0, 0, canvas.width, canvas.height);
+    } else {
+        const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        sky.addColorStop(0, skyTop);
+        sky.addColorStop(0.5, skyMid);
+        sky.addColorStop(1, skyBot);
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
     // Star Overlay (Only at night)
     if (Math.sin(time) < 0) {
@@ -529,52 +790,72 @@ const GameView = () => {
     }
 
     // Distant Hills (Layer 3)
-    ctx.save();
-    ctx.translate(-(world.offsetX * 0.1) % 800, 0);
-    ctx.fillStyle = '#1a0a2a';
-    ctx.beginPath();
-    ctx.moveTo(0, canvas.height);
-    for(let i=0; i<=10; i++) {
-        ctx.lineTo(i * 100, canvas.height - 80 - Math.sin(i*2) * 40);
+    if (spritesRef.current.bg_hills && spritesRef.current.bg_hills.complete && spritesRef.current.bg_hills.naturalWidth > 0) {
+        ctx.save();
+        const hillsImg = spritesRef.current.bg_hills;
+        ctx.translate(-(world.offsetX * 0.1) % canvas.width, 0);
+        ctx.drawImage(hillsImg, 0, canvas.height - 200, canvas.width, 200);
+        ctx.translate(canvas.width, 0);
+        ctx.drawImage(hillsImg, 0, canvas.height - 200, canvas.width, 200);
+        ctx.restore();
+    } else {
+        ctx.save();
+        ctx.translate(-(world.offsetX * 0.1) % 800, 0);
+        ctx.fillStyle = '#1a0a2a';
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height);
+        for(let i=0; i<=10; i++) {
+            ctx.lineTo(i * 100, canvas.height - 80 - Math.sin(i*2) * 40);
+        }
+        ctx.lineTo(1000, canvas.height);
+        ctx.fill();
+        // Second copy for tiling
+        ctx.translate(1000, 0);
+        ctx.fill();
+        ctx.restore();
     }
-    ctx.lineTo(1000, canvas.height);
-    ctx.fill();
-    // Second copy for tiling
-    ctx.translate(1000, 0);
-    ctx.fill();
-    ctx.restore();
 
     // Buildings (Layer 2)
-    ctx.save();
-    ctx.translate(-(world.offsetX * 0.25) % 1200, 0);
-    for (let i = 0; i < 15; i++) {
-       const bx = i * 160;
-       const bh = 180 + Math.sin(i * 33) * 100;
-       const bw = 100;
-       
-       // Front Face
-       ctx.fillStyle = '#141e30';
-       ctx.fillRect(bx, canvas.height - bh, bw, bh);
-       
-       // 3D Depth
-       ctx.fillStyle = '#0a0a20';
-       ctx.beginPath();
-       ctx.moveTo(bx + bw, canvas.height - bh);
-       ctx.lineTo(bx + bw + 15, canvas.height - bh - 15);
-       ctx.lineTo(bx + bw + 15, canvas.height);
-       ctx.lineTo(bx + bw, canvas.height);
-       ctx.fill();
+    if (spritesRef.current.bg_buildings && spritesRef.current.bg_buildings.complete && spritesRef.current.bg_buildings.naturalWidth > 0) {
+        ctx.save();
+        const bldImg = spritesRef.current.bg_buildings;
+        ctx.translate(-(world.offsetX * 0.25) % canvas.width, 0);
+        ctx.drawImage(bldImg, 0, canvas.height - 350, canvas.width, 350);
+        ctx.translate(canvas.width, 0);
+        ctx.drawImage(bldImg, 0, canvas.height - 350, canvas.width, 350);
+        ctx.restore();
+    } else {
+        ctx.save();
+        ctx.translate(-(world.offsetX * 0.25) % 1200, 0);
+        for (let i = 0; i < 15; i++) {
+           const bx = i * 160;
+           const bh = 180 + Math.sin(i * 33) * 100;
+           const bw = 100;
+           
+           // Front Face
+           ctx.fillStyle = '#141e30';
+           ctx.fillRect(bx, canvas.height - bh, bw, bh);
+           
+           // 3D Depth
+           ctx.fillStyle = '#0a0a20';
+           ctx.beginPath();
+           ctx.moveTo(bx + bw, canvas.height - bh);
+           ctx.lineTo(bx + bw + 15, canvas.height - bh - 15);
+           ctx.lineTo(bx + bw + 15, canvas.height);
+           ctx.lineTo(bx + bw, canvas.height);
+           ctx.fill();
 
-       // Windows
-       const windowsOn = Math.sin(time) < 0.2;
-       ctx.fillStyle = (windowsOn && Math.sin(i + Date.now()/1000) > 0.4) ? '#f8fb02' : '#1a1a2e';
-       for(let r=0; r<bh/40; r++) {
-           for(let c=0; c<bw/35; c++) {
-               ctx.fillRect(bx + 12 + c*30, canvas.height - bh + 15 + r*40, 8, 8);
+           // Windows
+           const windowsOn = Math.sin(time) < 0.2;
+           ctx.fillStyle = (windowsOn && Math.sin(i + Date.now()/1000) > 0.4) ? '#f8fb02' : '#1a1a2e';
+           for(let r=0; r<bh/40; r++) {
+               for(let c=0; c<bw/35; c++) {
+                   ctx.fillRect(bx + 12 + c*30, canvas.height - bh + 15 + r*40, 8, 8);
+               }
            }
-       }
+        }
+        ctx.restore();
     }
-    ctx.restore();
 
     // Near Palm Trees (Layer 1)
     ctx.save();
@@ -602,22 +883,38 @@ const GameView = () => {
 
     // Platforms with Perspective
     world.platforms.forEach(p => {
-      // Front face
-      ctx.fillStyle = p.type === 'ground' ? '#0a0a0a' : '#1a1a1a';
-      ctx.fillRect(p.x, p.y, p.width, p.height);
-      
-      // Top lip highlight
-      ctx.fillStyle = '#f8fb02';
-      ctx.fillRect(p.x, p.y, p.width, 3);
+      if (p.type === 'ground' && spritesRef.current.tile_ground && spritesRef.current.tile_ground.complete && spritesRef.current.tile_ground.naturalWidth > 0) {
+        ctx.save();
+        const tile = spritesRef.current.tile_ground;
+        for (let tx = p.x; tx < p.x + p.width; tx += tile.width) {
+          ctx.drawImage(tile, tx, p.y, Math.min(tile.width, p.x + p.width - tx), p.height);
+        }
+        ctx.restore();
+      } else if (p.type === 'ledge' && spritesRef.current.tile_platform && spritesRef.current.tile_platform.complete && spritesRef.current.tile_platform.naturalWidth > 0) {
+        ctx.save();
+        const tile = spritesRef.current.tile_platform;
+        for (let tx = p.x; tx < p.x + p.width; tx += tile.width) {
+          ctx.drawImage(tile, tx, p.y, Math.min(tile.width, p.x + p.width - tx), p.height);
+        }
+        ctx.restore();
+      } else {
+        // Front face
+        ctx.fillStyle = p.type === 'ground' ? '#0a0a0a' : '#1a1a1a';
+        ctx.fillRect(p.x, p.y, p.width, p.height);
+        
+        // Top lip highlight
+        ctx.fillStyle = '#f8fb02';
+        ctx.fillRect(p.x, p.y, p.width, 3);
 
-      // Side depth
-      ctx.fillStyle = '#050505';
-      ctx.beginPath();
-      ctx.moveTo(p.x + p.width, p.y);
-      ctx.lineTo(p.x + p.width + 10, p.y - 10);
-      ctx.lineTo(p.x + p.width + 10, p.y + p.height - 10);
-      ctx.lineTo(p.x + p.width, p.y + p.height);
-      ctx.fill();
+        // Side depth
+        ctx.fillStyle = '#050505';
+        ctx.beginPath();
+        ctx.moveTo(p.x + p.width, p.y);
+        ctx.lineTo(p.x + p.width + 10, p.y - 10);
+        ctx.lineTo(p.x + p.width + 10, p.y + p.height - 10);
+        ctx.lineTo(p.x + p.width, p.y + p.height);
+        ctx.fill();
+      }
     });
 
     // Bullets with Glow
@@ -637,73 +934,93 @@ const GameView = () => {
         if (!e.active) return;
         const ex = e.x;
         const ey = e.y;
-        const eFrame = (Date.now() / 150);
-        const legMov = Math.sin(eFrame) * 6;
         
-        ctx.save();
-        ctx.translate(ex + e.width / 2, ey + e.height / 2);
-        if (e.dx > 0) ctx.scale(-1, 1);
-        
-        // Escalar todo el dibujo basado en el tamaño asignado (hitbox height 100)
-        const scale = e.height / 40;
-        ctx.scale(scale, scale);
-        ctx.translate(-20, -20); // Centrar el dibujo original en el nuevo eje
-        
+        if (spritesRef.current.enemy_walk && spritesRef.current.enemy_walk.complete && spritesRef.current.enemy_walk.naturalWidth > 0) {
+            ctx.save();
+            const enemyImg = spritesRef.current.enemy_walk;
+            ctx.translate(ex + e.width / 2, ey + e.height / 2);
+            if (e.dx > 0) ctx.scale(-1, 1);
+            
+            const frameCount = 6; // Caminado animado por defecto
+            const currentFrame = Math.floor((Date.now() / 150) % frameCount);
+            const sw = enemyImg.naturalWidth / frameCount;
+            const sh = enemyImg.naturalHeight;
+            
+            ctx.drawImage(
+                enemyImg,
+                currentFrame * sw, 0, sw, sh,
+                -e.width / 2, -e.height / 2, e.width, e.height
+            );
+            ctx.restore();
+        } else {
+            const eFrame = (Date.now() / 150);
+            const legMov = Math.sin(eFrame) * 6;
+            
+            ctx.save();
+            ctx.translate(ex + e.width / 2, ey + e.height / 2);
+            if (e.dx > 0) ctx.scale(-1, 1);
+            
+            // Escalar todo el dibujo basado en el tamaño asignado (hitbox height 100)
+            const scale = e.height / 40;
+            ctx.scale(scale, scale);
+            ctx.translate(-20, -20); // Centrar el dibujo original en el nuevo eje
+            
 
-        // Legs (Humanoid)
-        ctx.fillStyle = '#1b5e20';
-        ctx.fillRect(5, 30 + legMov, 12, 15);
-        ctx.fillRect(25, 30 - legMov, 12, 15);
-        
-        // Torso
-        const torsoGrad = ctx.createLinearGradient(0, 5, 40, 5);
-        torsoGrad.addColorStop(0, '#2e7d32');
-        torsoGrad.addColorStop(1, '#1b5e20');
-        ctx.fillStyle = torsoGrad;
-        ctx.fillRect(5, 10, 30, 25);
-        
-        // Arms (Humanoid but long)
-        ctx.fillStyle = '#4caf50';
-        ctx.fillRect(-5, 12 - legMov/2, 10, 20); // Arm 1
-        ctx.fillRect(35, 12 + legMov/2, 10, 20); // Arm 2
+            // Legs (Humanoid)
+            ctx.fillStyle = '#1b5e20';
+            ctx.fillRect(5, 30 + legMov, 12, 15);
+            ctx.fillRect(25, 30 - legMov, 12, 15);
+            
+            // Torso
+            const torsoGrad = ctx.createLinearGradient(0, 5, 40, 5);
+            torsoGrad.addColorStop(0, '#2e7d32');
+            torsoGrad.addColorStop(1, '#1b5e20');
+            ctx.fillStyle = torsoGrad;
+            ctx.fillRect(5, 10, 30, 25);
+            
+            // Arms (Humanoid but long)
+            ctx.fillStyle = '#4caf50';
+            ctx.fillRect(-5, 12 - legMov/2, 10, 20); // Arm 1
+            ctx.fillRect(35, 12 + legMov/2, 10, 20); // Arm 2
 
-        // Head (Reptilian Humanoid)
-        ctx.fillStyle = '#388e3c';
-        ctx.beginPath();
-        ctx.moveTo(10, 10);
-        ctx.lineTo(30, 10);
-        ctx.lineTo(40, -5); // Snout
-        ctx.lineTo(30, -15);
-        ctx.lineTo(10, -15);
-        ctx.fill();
-
-        // Glowing Eyes
-        ctx.fillStyle = '#ff1744';
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#f00';
-        ctx.fillRect(25, -10, 8, 4);
-        ctx.shadowBlur = 0;
-
-        // Spikes/Scales on back
-        ctx.fillStyle = '#0a330a';
-        for(let i=0; i<3; i++) {
+            // Head (Reptilian Humanoid)
+            ctx.fillStyle = '#388e3c';
             ctx.beginPath();
-            ctx.moveTo(5, 10 + i * 8);
-            ctx.lineTo(-5, 14 + i * 8);
-            ctx.lineTo(5, 18 + i * 8);
+            ctx.moveTo(10, 10);
+            ctx.lineTo(30, 10);
+            ctx.lineTo(40, -5); // Snout
+            ctx.lineTo(30, -15);
+            ctx.lineTo(10, -15);
             ctx.fill();
+
+            // Glowing Eyes
+            ctx.fillStyle = '#ff1744';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#f00';
+            ctx.fillRect(25, -10, 8, 4);
+            ctx.shadowBlur = 0;
+
+            // Spikes/Scales on back
+            ctx.fillStyle = '#0a330a';
+            for(let i=0; i<3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(5, 10 + i * 8);
+                ctx.lineTo(-5, 14 + i * 8);
+                ctx.lineTo(5, 18 + i * 8);
+                ctx.fill();
+            }
+
+            // Thick Tail
+            ctx.fillStyle = '#1b5e20';
+            ctx.beginPath();
+            const tailSwing = Math.sin(eFrame * 0.8) * 12;
+            ctx.moveTo(10, 30);
+            ctx.quadraticCurveTo(-20, 35 + tailSwing, -30, 45 + tailSwing);
+            ctx.lineTo(-10, 42);
+            ctx.fill();
+
+            ctx.restore();
         }
-
-        // Thick Tail
-        ctx.fillStyle = '#1b5e20';
-        ctx.beginPath();
-        const tailSwing = Math.sin(eFrame * 0.8) * 12;
-        ctx.moveTo(10, 30);
-        ctx.quadraticCurveTo(-20, 35 + tailSwing, -30, 45 + tailSwing);
-        ctx.lineTo(-10, 42);
-        ctx.fill();
-
-        ctx.restore();
     });
 
     // PLAYER RENDERING
@@ -761,11 +1078,24 @@ const GameView = () => {
                 ctx.drawImage(currentImage, offsetX, offsetY, renderWidth, renderHeight);
             }
         } else {
-            // Fallback (Biggie Silhouette)
-            ctx.fillStyle = '#111';
-            ctx.fillRect(0, 0, player.width, player.height);
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(5, 5, 5, 5); // Eye
+            // Dynamic styled silhouette fallback for active character selection
+            const character = CHARACTERS.find(c => c.id === selectedCharId) || CHARACTERS[0];
+            
+            // Draw stylized shadow body
+            ctx.fillStyle = character.avatarFallback;
+            ctx.beginPath();
+            ctx.arc(player.width / 2, 25, 20, 0, Math.PI * 2); // Head
+            ctx.fill();
+            
+            ctx.fillRect(10, 45, player.width - 20, player.height - 45); // Body
+            
+            // Signature golden crown or cool street shades decoration!
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(player.facingRight ? 32 : 12, 18, 20, 6); // Sunglasses
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '8px monospace';
+            ctx.fillText(character.name.toUpperCase(), 12, 60);
         }
 
         ctx.restore();
@@ -814,13 +1144,36 @@ const GameView = () => {
     try {
       const userRef = doc(db, 'users', user.uid);
       const snap = await getDoc(userRef);
-      const currentPoints = snap.data()?.points || 0;
-      const currentHighScore = snap.data()?.highScore || 0;
+      
+      if (!snap.exists()) {
+        // Create clean profile so standard validation rules pass perfectly
+        await setDoc(userRef, {
+          uid: user.uid,
+          email: user.email || '',
+          displayName: user.displayName || 'ANÓNIMO',
+          role: 'fan',
+          category: 'OYENTE ACTIVO',
+          plan: 'fan',
+          points: score,
+          highScore: score,
+          createdAt: new Date().toISOString(),
+          isPinned: false,
+          bio: '',
+          photoURL: user.photoURL || '',
+          acceptedEcosystem: true,
+          avatarSelfieUrl: '',
+          avatarUrl: user.photoURL || '',
+          hasAvatar: false
+        });
+      } else {
+        const currentPoints = snap.data()?.points || 0;
+        const currentHighScore = snap.data()?.highScore || 0;
 
-      await setDoc(userRef, {
-        points: currentPoints + score,
-        highScore: Math.max(currentHighScore, score)
-      }, { merge: true });
+        await setDoc(userRef, {
+          points: currentPoints + score,
+          highScore: Math.max(currentHighScore, score)
+        }, { merge: true });
+      }
     } catch (e) {
       console.error("Error updating score", e);
     }
@@ -854,24 +1207,74 @@ const GameView = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center overflow-hidden"
+                className="absolute inset-0 bg-black/95 backdrop-blur-sm flex flex-col items-center justify-between p-4 py-6 text-center overflow-hidden"
               >
-                <motion.div 
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  className="w-24 h-24 bg-brand-yellow rounded-full flex items-center justify-center mb-8 shadow-[0_0_50px_rgba(248,251,2,0.4)] cursor-pointer relative z-10" 
-                  onClick={startNewGame}
-                >
-                  <Play className="text-black ml-1" size={48} fill="black" />
-                </motion.div>
-
-                <div className="relative z-10 space-y-2">
-                  <h2 className="text-4xl md:text-6xl font-black italic uppercase tracking-tighter text-white leading-tight">
-                    RAPLIFE<br />
-                    <span className="text-white">ARCADE</span>
+                {/* Header Section */}
+                <div className="relative z-10">
+                  <h2 className="text-2xl sm:text-3xl font-black italic uppercase tracking-tighter text-white leading-none">
+                    RAPLIFE <span className="text-brand-yellow">ARCADE</span>
                   </h2>
-                  <p className="text-lg md:text-xl font-black text-brand-yellow uppercase tracking-[0.2em]">HIP HOP EDITION</p>
-                  <p className="text-[10px] md:text-[12px] font-bold text-gray-400 uppercase tracking-[0.4em] pt-4">THE STREETS ARE WAITING</p>
+                  <p className="text-[8px] font-black text-white/55 tracking-[0.2em] uppercase mt-1">SELECCIONA TU LEYENDA DEL RAP</p>
+                </div>
+
+                {/* Character Selection Layout */}
+                <div className="relative z-10 w-full max-w-lg my-1 sm:my-2 px-1">
+                  <div className="grid grid-cols-3 gap-2">
+                    {CHARACTERS.map((char) => {
+                      const isSelected = selectedCharId === char.id;
+                      return (
+                        <button
+                          key={char.id}
+                          onClick={() => setSelectedCharId(char.id as any)}
+                          className={`flex flex-col p-2.5 rounded-2xl text-center border-2 transition-all relative group overflow-hidden ${
+                            isSelected 
+                              ? 'border-brand-yellow bg-brand-yellow/10 shadow-[0_0_20px_rgba(248,251,2,0.3)] scale-[1.03]' 
+                              : 'border-white/5 bg-black/50 hover:border-white/25'
+                          }`}
+                        >
+                          {/* Circle Avatar with character brand color */}
+                          <div 
+                            className="w-10 h-10 sm:w-12 sm:h-12 mx-auto rounded-full mb-1.5 flex items-center justify-center font-black text-sm text-black uppercase shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                            style={{ backgroundColor: char.avatarFallback }}
+                          >
+                            {char.name[0]}
+                          </div>
+                          
+                          <span className="text-[10px] sm:text-xs font-black uppercase text-white truncate leading-tight block">
+                            {char.name}
+                          </span>
+                          <span className="text-[6px] sm:text-[7px] text-brand-yellow font-black uppercase tracking-wider block mt-0.5 truncate">
+                            {char.subtitle}
+                          </span>
+                          <p className="text-[5px] sm:text-[6px] leading-tight text-gray-500 font-bold uppercase mt-1.5 line-clamp-2 h-5 text-center px-0.5 pointer-events-none">
+                            {char.description}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Loading / Action Section */}
+                <div className="relative z-10 w-full flex flex-col items-center gap-1.5">
+                  {!imagesLoaded ? (
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="w-5 h-5 border-2 border-brand-yellow border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-[7px] font-black text-brand-yellow uppercase tracking-widest animate-pulse">CARGANDO RECURSOS DEL MC...</p>
+                    </div>
+                  ) : (
+                    <motion.button 
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={startNewGame}
+                      className="chrome-button px-8 py-2.5 rounded-xl text-black font-black uppercase tracking-widest text-xs flex items-center gap-2 shadow-[0_0_25px_rgba(248,251,2,0.3)] hover:brightness-110 active:brightness-95 transition-all"
+                    >
+                      <Play size={12} fill="black" /> INSERT COIN / JUGAR
+                    </motion.button>
+                  )}
+                  <p className="text-[6px] sm:text-[7px] font-bold text-gray-400 uppercase tracking-widest">
+                    PULSA SPACE / FLECHA ARRIBA PARA SALTAR • F / ENTER PARA DISPARAR
+                  </p>
                 </div>
               </motion.div>
             )}
@@ -880,17 +1283,28 @@ const GameView = () => {
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="absolute inset-0 bg-red-900/40 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
+                className="absolute inset-0 bg-red-910/50 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-10"
               >
-                <h2 className="text-5xl font-black italic uppercase tracking-tighter text-white mb-2">FAIL</h2>
-                <p className="text-xs font-bold uppercase tracking-widest mb-8 text-white/70">LA CALLE NO PERDONA</p>
-                <div className="bg-black/60 px-8 py-4 rounded-3xl border-2 border-white/15 mb-8">
-                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">SCORE</p>
-                  <p className="text-3xl font-black italic font-mono text-brand-yellow">{score}</p>
+                <h2 className="text-5xl font-black italic uppercase tracking-tighter text-white mb-1">FAIL</h2>
+                <p className="text-xs font-bold uppercase tracking-widest mb-6 text-white/70">LA CALLE NO PERDONA</p>
+                <div className="bg-black/60 px-8 py-3 rounded-2xl border-2 border-white/15 mb-6">
+                  <p className="text-[9px] font-bold text-gray-500 uppercase mb-0.5">SCORE</p>
+                  <p className="text-2xl font-black italic font-mono text-brand-yellow leading-none">{score}</p>
                 </div>
-                <button onClick={startNewGame} className="chrome-button px-10 py-4 rounded-2xl text-black font-black uppercase tracking-widest text-sm flex items-center gap-3">
-                  <RotateCcw size={18} /> REINTENTAR
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs sm:max-w-md justify-center">
+                  <button onClick={startNewGame} className="chrome-button px-6 py-3 rounded-xl text-black font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(248,251,2,0.2)]">
+                    <RotateCcw size={14} /> REINTENTAR
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setGameState('idle');
+                      gameStateRef.current = 'idle';
+                    }} 
+                    className="bg-black/80 hover:bg-black/100 text-white border-2 border-white/20 hover:border-brand-yellow/80 rounded-xl px-6 py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all"
+                  >
+                    CAMBIAR LEYENDA
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -1034,7 +1448,7 @@ const GameView = () => {
 
       </div>
 
-      <div className="w-full max-w-4xl space-y-10 py-10 px-4">
+      <div className="w-full max-w-4xl space-y-10 py-10 px-4 animate-fadeIn">
         <Leaderboard />
         
         <div className="space-y-10">
@@ -1044,6 +1458,137 @@ const GameView = () => {
           </header>
           <RewardsTable />
         </div>
+
+        {/* Toggleable Developer Sprite Guide */}
+        {isAdmin && (
+          <div className="flex justify-center pt-2">
+            <button 
+              onClick={() => setShowGuide(!showGuide)} 
+              className="text-[9px] text-gray-500 hover:text-brand-yellow font-black uppercase tracking-widest flex items-center gap-1.5 bg-black/40 border border-white/5 hover:border-brand-yellow/30 px-4 py-2 rounded-full transition-all cursor-pointer"
+            >
+              🛠️ {showGuide ? 'OCULTAR' : 'MOSTRAR'} GUÍA DE RECURSOS & SPRITES (DESARROLLADOR)
+            </button>
+          </div>
+        )}
+
+        {/* ASSETS SPECIFICATION BLUEPRINT */}
+        {isAdmin && showGuide && (
+          <div className="bg-black/60 border-4 border-boombox-gray rounded-[2.5rem] p-6 sm:p-8 w-full max-w-4xl mx-auto shadow-2xl relative overflow-hidden animate-fadeIn">
+            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+              <Award size={180} />
+            </div>
+            
+            <div className="flex flex-col sm:flex-row items-center gap-3 mb-6 justify-between border-b border-white/10 pb-4">
+              <div className="flex items-center gap-3">
+                <Award className="text-brand-yellow" size={28} />
+                <h3 className="text-xl sm:text-2xl font-black italic uppercase tracking-tighter text-white">GUÍA DE RECURSOS & SPRITES</h3>
+              </div>
+              <span className="text-[8px] bg-brand-yellow/10 text-brand-yellow border border-brand-yellow/20 px-2.5 py-1 rounded-full font-black uppercase tracking-widest">
+                ARCADE INTERACTIVE BLUEPRINT
+              </span>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-xs text-gray-300">
+              {/* Column 1: Personajes */}
+              <div className="space-y-4">
+                <h4 className="font-black text-brand-yellow uppercase tracking-widest flex items-center gap-2">
+                  <span className="w-1.5 h-3 bg-brand-yellow block" />
+                  📂 SPRITES DE PERSONAJES (ORIENTADOS DERECHA)
+                </h4>
+                <p className="text-gray-400 leading-normal font-bold uppercase text-[9px] bg-red-950/20 border-l-2 border-red-500 p-2.5 rounded-r-lg">
+                  ⚠️ <span className="text-brand-yellow font-black">REGLA DE ORIENTACIÓN:</span> Los sprites deben estar dibujados <span className="text-white underline">MIRANDO HACIA LA DERECHA</span> por defecto en tu archivo PNG. El motor los rotará automáticamente 180° hacia la izquierda en pantalla cuando cambies de dirección.
+                </p>
+                
+                <div className="space-y-4 font-mono text-[9px] bg-black/40 p-4 rounded-2xl border border-white/5">
+                  <div>
+                    <p className="text-brand-yellow font-black text-[10px] border-b border-white/5 pb-1 flex items-center justify-between">
+                      <span>🕶️ P1: BIGGIE (player)</span>
+                      <span className="text-[7px] text-gray-500">FORMATO REQUERIDO</span>
+                    </p>
+                    <ul className="list-none space-y-1 text-gray-400 mt-1.5 pl-1">
+                      <li><span className="text-white">/assets/player_idle.png</span> - Reposo (1 frame)</li>
+                      <li><span className="text-white">/assets/player_walk.png</span> - Caminar (Hoja de 12 frames horizontales)</li>
+                      <li><span className="text-white">/assets/player_jump.png</span> - Salto (1 frame)</li>
+                      <li><span className="text-white">/assets/player_shoot.png</span> - Disparar (1 frame)</li>
+                      <li><span className="text-white">/assets/player_jump_shoot.png</span> - Disparar en aire</li>
+                    </ul>
+                  </div>
+                  
+                  <div>
+                    <p className="text-brand-yellow font-black text-[10px] border-b border-white/5 pb-1 flex items-center justify-between">
+                      <span>🎤 P2: 2PAC (player2)</span>
+                      <span className="text-[7px] text-gray-500">FORMATO REQUERIDO</span>
+                    </p>
+                    <ul className="list-none space-y-1 text-gray-400 mt-1.5 pl-1">
+                      <li><span className="text-white">/assets/player2_idle.png</span></li>
+                      <li><span className="text-white">/assets/player2_walk.png</span> (Hoja de 12 frames horizontales)</li>
+                      <li><span className="text-white">/assets/player2_jump.png</span></li>
+                      <li><span className="text-white">/assets/player2_shoot.png</span></li>
+                      <li><span className="text-white">/assets/player2_jump_shoot.png</span></li>
+                    </ul>
+                  </div>
+                  
+                  <div>
+                    <p className="text-brand-yellow font-black text-[10px] border-b border-white/5 pb-1 flex items-center justify-between">
+                      <span>🛹 P3: MCFLY (player3)</span>
+                      <span className="text-[7px] text-gray-500">FORMATO REQUERIDO</span>
+                    </p>
+                    <ul className="list-none space-y-1 text-gray-400 mt-1.5 pl-1">
+                      <li><span className="text-white">/assets/player3_idle.png</span></li>
+                      <li><span className="text-white">/assets/player3_walk.png</span> (Hoja de 12 frames horizontales)</li>
+                      <li><span className="text-white">/assets/player3_jump.png</span></li>
+                      <li><span className="text-white">/assets/player3_shoot.png</span></li>
+                      <li><span className="text-white">/assets/player3_jump_shoot.png</span></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Column 2: Escenarios y Enemigos */}
+              <div className="space-y-4">
+                <h4 className="font-black text-brand-yellow uppercase tracking-widest flex items-center gap-2">
+                  <span className="w-1.5 h-3 bg-brand-yellow block" />
+                  🏙️ FONDOS, EDIFICIOS & TEXTURAS (OPCIONALES)
+                </h4>
+                <p className="text-gray-400 leading-normal font-bold uppercase text-[9px]">
+                  ¡Sube estos nombres a tu carpeta para cambiar todo el estilo! El juego usa vectores mate si no los encuentra.
+                </p>
+                
+                <div className="space-y-4 font-mono text-[9px] bg-black/40 p-4 rounded-2xl border border-white/5">
+                  <div>
+                    <p className="text-white font-bold uppercase text-[10px] border-b border-white/5 pb-1">
+                      🌆 ARCHIVOS DEL ESCENARIO (PARALLAX)
+                    </p>
+                    <ul className="list-none space-y-1 text-gray-400 mt-1.5 pl-1">
+                      <li><span className="text-brand-yellow">/assets/bg_sky.png</span> - Cielo de fondo</li>
+                      <li><span className="text-brand-yellow">/assets/bg_buildings.png</span> - Edificios de Siluetas (Middleground)</li>
+                      <li><span className="text-brand-yellow">/assets/bg_hills.png</span> - Montañas / Colinas (Far Background)</li>
+                    </ul>
+                  </div>
+                  
+                  <div>
+                    <p className="text-white font-bold uppercase text-[10px] border-b border-white/5 pb-1">
+                      🧱 PLATAFORMAS Y SUELOS (TILADO)
+                    </p>
+                    <ul className="list-none space-y-1 text-gray-400 mt-1.5 pl-1">
+                      <li><span className="text-brand-yellow">/assets/tile_ground.png</span> - Piso/Asfalto inferior principal</li>
+                      <li><span className="text-brand-yellow">/assets/tile_platform.png</span> - Bloques/Repisas flotantes suspendidas</li>
+                    </ul>
+                  </div>
+                  
+                  <div>
+                    <p className="text-white font-bold uppercase text-[10px] border-b border-white/5 pb-1">
+                      🦎 ENEMIGO REPTIL
+                    </p>
+                    <ul className="list-none space-y-1 text-gray-400 mt-1.5 pl-1">
+                      <li><span className="text-brand-yellow">/assets/enemy_walk.png</span> - Hoja de caminata para el reptil (6 frames)</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 {
   "name": "RAPLIFE RECORDS INC.",
   "description": "App oficial de RapLife Records. Plataforma unificada para artistas y fans con radio integrada, mini-juego de plataformas estilo callejero y feed de lanzamientos.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

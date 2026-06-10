@@ -22,6 +22,9 @@ interface MusicContextType {
   setRadioMode: (mode: boolean) => void;
   isMuted: boolean;
   toggleMute: () => void;
+  volume: number;
+  setVolume: (vol: number) => void;
+  fadeVolume: (target: number, durationMs: number) => Promise<void>;
 }
 
 const MusicContext = createContext<MusicContextType | null>(null);
@@ -36,12 +39,95 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const playPromiseRef = useRef<Promise<void> | null>(null);
   const [songsPlayedCount, setSongsPlayedCount] = useState(0);
 
+  // Volume & Fade states
+  const [volume, setVolumeState] = useState(1.0);
+  const fadeIntervalRef = useRef<any>(null);
+
+  const setVolume = (vol: number) => {
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+      fadeIntervalRef.current = null;
+    }
+    const clamped = Math.max(0, Math.min(1, vol));
+    setVolumeState(clamped);
+    if (audioRef.current) {
+      audioRef.current.volume = clamped;
+    }
+  };
+
+  const fadeVolume = (target: number, durationMs: number): Promise<void> => {
+    return new Promise((resolve) => {
+      if (fadeIntervalRef.current) {
+        clearInterval(fadeIntervalRef.current);
+        fadeIntervalRef.current = null;
+      }
+
+      if (!audioRef.current) {
+        resolve();
+        return;
+      }
+
+      const startVolume = audioRef.current.volume;
+      const targetVolume = Math.max(0, Math.min(1, target));
+      const steps = 15;
+      const stepTime = durationMs / steps;
+      let currentStep = 0;
+
+      fadeIntervalRef.current = setInterval(() => {
+        currentStep++;
+        const fraction = currentStep / steps;
+        const nextVolume = startVolume + (targetVolume - startVolume) * fraction;
+        
+        if (audioRef.current) {
+          const nextClamped = Math.max(0, Math.min(1, nextVolume));
+          audioRef.current.volume = nextClamped;
+          setVolumeState(nextClamped);
+        }
+
+        if (currentStep >= steps) {
+          if (fadeIntervalRef.current) {
+            clearInterval(fadeIntervalRef.current);
+            fadeIntervalRef.current = null;
+          }
+          if (audioRef.current) {
+            audioRef.current.volume = targetVolume;
+            setVolumeState(targetVolume);
+            
+            // If target is 0, pause the playback entirely to allow local instruments
+            if (targetVolume === 0 && isPlaying) {
+              if (playPromiseRef.current) {
+                playPromiseRef.current
+                  .then(() => {
+                    if (audioRef.current) audioRef.current.pause();
+                  })
+                  .catch(() => {
+                    if (audioRef.current) audioRef.current.pause();
+                  });
+              } else {
+                audioRef.current.pause();
+              }
+              setIsPlaying(false);
+            }
+          }
+          resolve();
+        }
+      }, stepTime);
+    });
+  };
+
   // Synchronize audio muted state
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.muted = isMuted;
     }
   }, [isMuted]);
+
+  // Synchronize audio volume state
+  useEffect(() => {
+    if (audioRef.current && !fadeIntervalRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
 
   useEffect(() => {
     audioRef.current = new Audio();
@@ -258,7 +344,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   return (
-    <MusicContext.Provider value={{ currentTrack, isPlaying, play, togglePlay, nextTrack, radioMode, setRadioMode, isMuted, toggleMute }}>
+    <MusicContext.Provider value={{ currentTrack, isPlaying, play, togglePlay, nextTrack, radioMode, setRadioMode, isMuted, toggleMute, volume, setVolume, fadeVolume }}>
       {children}
     </MusicContext.Provider>
   );
