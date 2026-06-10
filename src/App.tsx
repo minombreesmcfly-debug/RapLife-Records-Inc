@@ -217,33 +217,12 @@ const AppContent = () => {
     setLoginError(null);
     setIsLoginPending(true);
     
-    // Auto-detect mobile devices and use redirect instead of popups
-    // This bypasses popup blockers on Chrome mobile & Safari iOS that cause infinite loading hang
-    if (isMobileDevice()) {
-      console.log("Mobile device detected. Directly triggering Redirect Login helper...");
-      try {
-        await signInWithGoogleRedirect();
-      } catch (err: any) {
-        console.error("Direct mobile redirect login error:", err);
-        setLoginError(err);
-        setIsLoginPending(false);
-      }
-      return;
-    }
-
     try {
-      // Direct standard popup login for desktop
-      await signInWithGoogle();
+      console.log("Triggering Google login redirection...");
+      await signInWithGoogleRedirect();
     } catch (err: any) {
-      console.warn("Popup blocked or failed, falling back to Redirect login method:", err);
-      try {
-        await signInWithGoogleRedirect();
-      } catch (redirectErr: any) {
-        console.error("Direct redirect login error:", redirectErr);
-        setLoginError(redirectErr);
-        setIsLoginPending(false);
-      }
-    } finally {
+      console.error("Direct Google redirect login error:", err);
+      setLoginError(err);
       setIsLoginPending(false);
     }
   };
@@ -373,96 +352,6 @@ const AppContent = () => {
          <div className="absolute bottom-20 right-10 w-96 h-96 bg-brand-yellow rounded-full blur-[150px]" />
       </div>
 
-      {/* LOGIN METHOD SELECTION MODAL */}
-      <AnimatePresence>
-        {showLoginModal && (
-          <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-[999] backdrop-blur-sm">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-boombox-gray border-4 border-black p-6 rounded-3xl max-w-md w-full shadow-2xl relative text-left boombox-texture font-sans"
-            >
-              <div className="absolute top-3 left-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
-              <div className="absolute top-3 right-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
-              <div className="absolute bottom-3 left-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
-              <div className="absolute bottom-3 right-3 w-2.5 h-2.5 rounded-full bg-black/40 animate-pulse" />
-
-              <div className="flex items-center gap-3 border-b-2 border-black pb-3 mb-4">
-                <div className="p-2 bg-brand-yellow text-black leading-none flex items-center justify-center rounded-lg pr-2.5">
-                  <LogIn size={20} className="text-black" />
-                </div>
-                <h3 className="text-xl font-black italic uppercase tracking-tighter text-brand-yellow glow-yellow">
-                  CONECTAR CUENTA
-                </h3>
-                <button 
-                  onClick={() => setShowLoginModal(false)}
-                  className="ml-auto text-gray-400 hover:text-white p-1 hover:bg-black/20 rounded-md transition-colors"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <p className="text-xs text-gray-300 font-semibold leading-relaxed">
-                  Para poder subir canciones, votar y entrar al probador o vestuario, conéctate con tu cuenta de Google. Elige el método más adecuado para tu dispositivo:
-                </p>
-
-                <div className="space-y-3">
-                  {/* OPTION 1: POPUP */}
-                  <button 
-                    onClick={handleLoginPopup}
-                    className="w-full text-left p-3.5 bg-black/40 hover:bg-black/60 border-2 border-black hover:border-brand-yellow rounded-xl transition-all group flex items-start gap-3 cursor-pointer"
-                  >
-                    <div className="p-2 bg-brand-yellow/10 group-hover:bg-brand-yellow text-brand-yellow group-hover:text-black rounded-lg transition-colors mt-0.5">
-                      <Monitor size={18} />
-                    </div>
-                    <div>
-                      <div className="text-xs font-black uppercase text-white group-hover:text-brand-yellow transition-colors tracking-wider">
-                        Método 1: Ventana Pop-Up
-                      </div>
-                      <div className="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-tight">
-                        Rápido en computadora. Abre una pestaña emergente integrada.
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* OPTION 2: REDIRECT */}
-                  <button 
-                    onClick={handleLoginRedirect}
-                    className="w-full text-left p-3.5 bg-brand-yellow/5 hover:bg-brand-yellow/10 border-2 border-brand-yellow/45 hover:border-brand-yellow rounded-xl transition-all group flex items-start gap-3 cursor-pointer"
-                  >
-                    <div className="p-2 bg-brand-yellow text-black rounded-lg transition-colors mt-0.5">
-                      <Smartphone size={18} />
-                    </div>
-                    <div>
-                      <div className="text-xs font-black uppercase text-brand-yellow transition-colors tracking-wider flex items-center gap-1.5">
-                        Método 2: Redirección
-                        <span className="text-[8px] bg-brand-yellow text-black px-1.5 py-0.5 rounded-full font-black font-sans uppercase animate-pulse">Recomendado</span>
-                      </div>
-                      <div className="text-[10px] text-gray-300 mt-1 uppercase font-bold tracking-tight">
-                        Evita bloqueos de safari/iPhone, modo incógnito y cookies de terceros de Vercel.
-                      </div>
-                    </div>
-                  </button>
-                </div>
-
-                <div className="text-[9px] text-gray-500 font-semibold leading-normal uppercase border-t border-black/50 pt-3">
-                  ⚠️ NOTA VERCEL: Recuerda tener agregado el dominio de Vercel en "Authorized Domains" dentro de Firebase Console.
-                </div>
-
-                <button 
-                  onClick={() => setShowLoginModal(false)}
-                  className="w-full py-2.5 text-center rounded-xl bg-black/40 text-[10px] font-black uppercase tracking-wider text-gray-400 hover:text-white hover:bg-black/65 transition-colors border-2 border-black"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
       {/* AUTH ERROR DIAGNOSTIC MODAL */}
       <AnimatePresence>
         {loginError && (
@@ -498,62 +387,54 @@ const AppContent = () => {
                 {loginError?.code === 'auth/unauthorized-domain' || (loginError?.message && loginError.message.includes('unauthorized-domain')) ? (
                   <>
                     <p className="text-xs uppercase font-black tracking-wider text-brand-yellow">
-                      ⚠️ ¡Falta autorizar AMBOS dominios en Firebase!
+                      ⚠️ ¡Dominio no autorizado o Configuración incorrecta en Vercel!
                     </p>
                     <div className="space-y-3 text-xs text-gray-300 font-medium leading-relaxed">
                       <p>
-                        Para seguridad de Firebase Auth, debes configurar tus dominios oficiales para permitir el login. Al trabajar en Google AI Studio, <strong>tienes dos dominios distintos (uno para desarrollo de edición y otro para compartir/móvil) que se diferencian solo por las letras 'dev' y 'pre'</strong>:
+                        Si has configurado tu propio proyecto personal de Firebase (<strong>raplife</strong>) pero al entrar en <strong>rapliferecordsinc.vercel.app</strong> sigues viendo este error, se debe a que tu sitio en Vercel sigue apuntando al Firebase Sandbox de AI Studio (gen-lang-client-...).
                       </p>
-                      
-                      <div className="space-y-2 border-2 border-dashed border-brand-yellow/20 p-3 rounded-2xl bg-black/50">
-                        <div>
-                          <p className="text-[9px] font-black uppercase text-brand-yellow tracking-wider mb-1">1. Entorno Desarrollador (Desktop/AI Studio):</p>
-                          <div className="bg-black/60 p-2 rounded border border-white/5 font-mono text-[10px] text-brand-green select-all text-center">
-                            {window.location.hostname.includes('-pre-') ? window.location.hostname.replace('-pre-', '-dev-') : window.location.hostname}
-                          </div>
+
+                      <div className="bg-black/50 p-3 rounded-2xl border border-brand-yellow/10 space-y-2">
+                        <p className="text-[10px] font-black uppercase text-brand-yellow tracking-wider">
+                          💡 SOLUCIÓN DEFINITIVA PARA TU SITIO WEB (VERCEL):
+                        </p>
+                        <p className="text-[9.5px] text-gray-400">
+                          Ve al panel de control de tu proyecto en <strong>Vercel &gt; Settings &gt; Environment Variables</strong> y agrega las siguientes variables de entorno con las credenciales de tu proyecto de Firebase personal (<strong>raplife</strong>):
+                        </p>
+                        <div className="bg-black/60 p-2.5 rounded border border-white/5 font-mono text-[9px] text-brand-green space-y-1 select-all">
+                          <div>VITE_FIREBASE_API_KEY=tu-api-key</div>
+                          <div>VITE_FIREBASE_AUTH_DOMAIN=raplife.firebaseapp.com</div>
+                          <div>VITE_FIREBASE_PROJECT_ID=raplife</div>
+                          <div>VITE_FIREBASE_STORAGE_BUCKET=raplife.firebasestorage.app</div>
+                          <div>VITE_FIREBASE_MESSAGING_SENDER_ID=tu-sender-id</div>
+                          <div>VITE_FIREBASE_APP_ID=tu-app-id</div>
                         </div>
-                        <div>
-                          <p className="text-[9px] font-black uppercase text-brand-yellow tracking-wider mb-1">2. Entorno Vista Previa / Compartir (Tu Celular / Mobile):</p>
-                          <div className="bg-black/60 p-2 rounded border border-white/5 font-mono text-[10px] text-brand-green select-all text-center">
-                            {window.location.hostname.includes('-dev-') ? window.location.hostname.replace('-dev-', '-pre-') : window.location.hostname}
-                          </div>
-                        </div>
+                        <p className="text-[9.5px] text-gray-400">
+                          Al hacer esto, tu sitio en Vercel se conectará automáticamente a tu base de datos y autenticación de <strong>raplife</strong> en segundos.
+                        </p>
                       </div>
 
-                      <p className="text-red-400 font-bold text-[11px] leading-tight flex items-start gap-1">
-                        <span>🔍</span>
-                        <span>
-                          <strong>Nota Crítica:</strong> Es muy común autorizar solo el primero y olvidar el segundo. Ambos deben estar registrados en Firebase.
-                        </span>
-                      </p>
-
-                      <p className="font-bold text-white mt-1">Cómo solucionarlo rápido:</p>
+                      <p className="font-bold text-white mt-1">Cómo solucionar el error si usas el sandbox de AI Studio:</p>
                       <ol className="list-decimal pl-4 space-y-1 text-gray-400">
                         <li>Abre tu <a href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`} target="_blank" rel="noopener noreferrer" className="text-brand-yellow hover:underline inline-flex items-center gap-1 font-bold">Consola Firebase <ExternalLink size={10} /></a>.</li>
                         <li>Entra en <strong>Authentication &gt; Settings &gt; Authorized domains</strong>.</li>
                         <li>Haz clic en <strong>Add domain</strong> (Añadir dominio).</li>
-                        <li>Copia y añade individualmente <strong>cada uno</strong> de los dos nombres de dominio listados arriba.</li>
-                        <li>Guarda y vuelve a iniciar sesión en tu celular.</li>
+                        <li>Añade <strong>{window.location.hostname}</strong> y guarda.</li>
+                        <li>Intenta de nuevo en un minuto.</li>
                       </ol>
                     </div>
                   </>
                 ) : (
                   <>
                     <p className="text-xs uppercase font-black tracking-wider text-brand-yellow">
-                      ⚠️ Bloqueo de Cookies o Ventana emergente bloqueada
+                      ⚠️ Error de inicio de sesión
                     </p>
                     <div className="space-y-2 text-xs text-gray-300 font-medium leading-relaxed">
                       <p>
-                        El inicio de sesión de Firebase por ventana emergente (Popup) se cerró o fue bloqueado por tu navegador. Esto suele ser por:
+                        Ocurrió un inconveniente al intentar iniciar sesión:
                       </p>
-                      <ul className="list-disc pl-4 space-y-1 text-gray-400">
-                        <li>Sistemas automáticos de bloqueo de ventanas emergentes (Pop-up blockers).</li>
-                        <li>Modo incógnito estricto (bloqueo de cookies de terceros).</li>
-                        <li>Navegadores móviles (Safari de iOS o Chrome en Android).</li>
-                      </ul>
-                      <p className="font-bold text-white mt-2">✨ ¡SOLUCIÓN RÁPIDA / RECOMENDADA! ✨</p>
-                      <p className="text-gray-200">
-                        Prueba el <strong>Método de Redirección</strong> haciendo clic abajo. Redirigirá la misma pestaña de forma segura, eludiendo cookies externas y bloqueos.
+                      <p className="text-gray-400">
+                        Por favor, asegúrate de que no estás en una pestaña privada estricta que bloquee cookies o almacenamiento local, y que tu conexión sea estable.
                       </p>
                     </div>
                   </>

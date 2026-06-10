@@ -164,98 +164,36 @@ const HomeView = () => {
         </div>
       </section>
 
-      {/* Main double column: left-recent tracks, right-TikTok feedback */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-10">
-        
-        {/* Left: Lanzamientos Recientes */}
-        <section className="lg:col-span-7 space-y-6" id="recent-tracks-section">
-          <div className="flex items-center gap-3 mb-6">
-             <Music className="text-brand-yellow" size={24} />
-             <h2 className="text-2xl font-black italic tracking-tighter uppercase">LANZAMIENTOS RECIENTES</h2>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {recentTracks.map((track) => (
-              <motion.div 
-                key={track.id}
-                whileHover={{ x: 5 }}
-                className="group flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/5 hover:border-brand-yellow/30 transition-all relative overflow-hidden"
-                id={`track-${track.id}`}
-              >
-                <div className="w-16 h-16 bg-gray-900 rounded-xl flex-shrink-0 relative border border-white/10 overflow-hidden">
-                   <img src={track.coverUrl || 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=200&auto=format&fit=crop'} className="w-full h-full object-cover" />
-                   <button 
-                     onClick={() => play(track)}
-                     className="absolute inset-0 flex items-center justify-center bg-brand-yellow/80 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                    >
-                     <Play className="text-black fill-black" size={24} />
-                   </button>
-                </div>
-                <div className="flex-1 min-w-0 text-left">
-                  <h4 className="font-black italic uppercase text-lg truncate group-hover:text-brand-yellow transition-colors tracking-tight">{track.title}</h4>
-                  <p className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider">Artista: <span className="text-gray-300">{track.artistName}</span></p>
-                </div>
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                   <ExternalLink size={16} className="text-brand-yellow" />
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* Right Sidebar: TikTok Embed */}
-        <aside className="lg:col-span-5 space-y-10" id="tiktok-sidebar">
-          <div className="bg-neutral-900/40 border-2 border-white/5 hover:border-brand-yellow/10 rounded-[2.5rem] p-4 md:p-8 relative overflow-hidden transition-all duration-300">
-            <div className="relative z-10">
-              <div className="flex flex-col items-center gap-2 mb-6 text-center pt-2">
-                <TrendingUp className="text-brand-yellow shrink-0" size={28} />
-                <h2 className="text-xl md:text-2xl font-black italic tracking-tighter uppercase text-white">SÍGUENOS EN TIKTOK</h2>
-                <div className="h-1 w-16 bg-brand-yellow rounded-full" />
+      {/* Full-width tracks list (stretched to fill the empty space of the removed TikTok widget) */}
+      <section className="space-y-6" id="recent-tracks-section">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
+          {recentTracks.map((track) => (
+            <motion.div 
+              key={track.id}
+              whileHover={{ y: -4 }}
+              className="group flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/5 hover:border-brand-yellow/30 transition-all relative overflow-hidden"
+              id={`track-${track.id}`}
+            >
+              <div className="w-16 h-16 bg-gray-900 rounded-xl flex-shrink-0 relative border border-white/10 overflow-hidden">
+                 <img src={track.coverUrl || 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=200&auto=format&fit=crop'} className="w-full h-full object-cover" />
+                 <button 
+                   onClick={() => play(track)}
+                   className="absolute inset-0 flex items-center justify-center bg-brand-yellow/80 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                  >
+                   <Play className="text-black fill-black" size={24} />
+                 </button>
               </div>
-              
-              <div className="space-y-6">
-                <div className="bg-black/60 rounded-3xl overflow-hidden border border-white/5 shadow-2xl p-2">
-                  <ElfsightTikTok />
-                </div>
-                
-                <div className="pt-4 text-center border-t border-white/5 space-y-4">
-                  <div>
-                    <p className="font-black italic uppercase text-lg mb-0.5 tracking-tighter text-brand-yellow">@raplife.records</p>
-                    <p className="text-gray-500 text-[9px] uppercase font-black tracking-widest mb-3">Comunidad Oficial de Lanzamientos</p>
-                    <a 
-                      href="https://www.tiktok.com/@raplife.records" 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="inline-block bg-white text-black px-8 py-3.5 rounded-2xl font-black italic uppercase text-xs hover:bg-brand-yellow hover:text-black transition-all shadow-xl active:scale-95 w-full cursor-pointer"
-                    >
-                      VER PERFIL EN TIKTOK
-                    </a>
-                  </div>
-
-                  {/* Add Registration CTA if not logged in */}
-                  {!profile && (
-                    <div className="bg-brand-yellow/5 p-5 rounded-2xl border border-brand-yellow/15 text-left mt-4">
-                      <h4 className="font-black italic uppercase text-sm mb-1 text-white">¿TE GUSTARÍA DIFUNDIR TU TRAP/RAP?</h4>
-                      <p className="text-[10px] text-gray-400 font-semibold uppercase mb-3 tracking-tight">Sube tus mejores canciones a RapLife Studio para recibir soporte promocional directo.</p>
-                      <Link 
-                        to="/profile-setup"
-                        className="block w-full bg-brand-yellow text-black text-center py-2.5 rounded-xl font-black italic uppercase text-[10px] hover:bg-white transition-colors"
-                      >
-                        ÚNETE A LA FAMILIA AHORA
-                      </Link>
-                    </div>
-                  )}
-                </div>
+              <div className="flex-1 min-w-0 text-left">
+                <h4 className="font-black italic uppercase text-base truncate group-hover:text-brand-yellow transition-colors tracking-tight">{track.title}</h4>
+                <p className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider">Artista: <span className="text-gray-300">{track.artistName}</span></p>
               </div>
-            </div>
-            {/* Structural Screw detail aesthetic lines */}
-            <div className="absolute top-4 left-4 w-2 h-2 rounded-full bg-neutral-850 border border-black/40" />
-            <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-neutral-850 border border-black/40" />
-            <div className="absolute bottom-4 left-4 w-2 h-2 rounded-full bg-neutral-850 border border-black/40" />
-            <div className="absolute bottom-4 right-4 w-2 h-2 rounded-full bg-neutral-850 border border-black/40" />
-          </div>
-        </aside>
-      </div>
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                 <ExternalLink size={16} className="text-brand-yellow" />
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </section>
 
       {/* WIDE FULL-WIDTH DISPLAY FOR PROMOTIONS AND ARTIST CAREER (Replaces old phone-like slider) */}
       <section className="w-full bg-neutral-900 border-4 border-neutral-850 rounded-[3rem] p-6 md:p-10 relative overflow-hidden" id="promotional-contact-segment">

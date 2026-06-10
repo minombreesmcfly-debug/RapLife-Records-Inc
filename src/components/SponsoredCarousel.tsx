@@ -23,7 +23,7 @@ const STATIC_SPONSORS: SponsoredArtist[] = [
     role: 'artist',
     category: 'RAP TRAP CONSPIRACIONES',
     bio: 'Líricas punzantes y bases oscuras cargadas de verdades incómodas, enigmas y teorías de conspiración sobre el asfalto pesado.',
-    photoURL: 'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?q=80&w=600&auto=format&fit=crop', // Estilo urbano dark
+    photoURL: '/src/assets/images/mcfly_ninja_rapper_1781111492480.png', // Ninja rapero hiperrealista
     spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
     instagramUrl: 'https://instagram.com/'
   },
@@ -33,7 +33,7 @@ const STATIC_SPONSORS: SponsoredArtist[] = [
     role: 'artist',
     category: 'RAP / REGIONAL MEXICANO TRAP',
     bio: 'Fusión pionera que une la crudeza del rap de calle con los arreglos profundos y el alma del Regional Mexicano en ritmo Trap.',
-    photoURL: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=600&auto=format&fit=crop', // Booth de grabación
+    photoURL: '/src/assets/images/jay_santana_ghetto_1781111479453.png', // Ciudad gueto noche
     spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
     instagramUrl: 'https://instagram.com/'
   },
