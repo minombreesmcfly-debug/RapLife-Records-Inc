@@ -94,6 +94,48 @@
         "status": { "type": "string" }
       },
       "required": ["artistName", "spotifyLink"]
+    },
+    "ContactMessage": {
+      "title": "ContactMessage",
+      "description": "Audiovisual production and videoclip inquiries submitted from the homepage.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "projectType": { "type": "string" },
+        "comments": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "read", "answered"] }
+      },
+      "required": ["name", "email", "projectType", "comments"]
+    },
+    "AdminMessage": {
+      "title": "AdminMessage",
+      "description": "Help, support, and feedback requests sent by users to the administration.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "message": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "read", "replied"] }
+      },
+      "required": ["userId", "message"]
+    },
+    "UserNotification": {
+      "title": "UserNotification",
+      "description": "System or admin-sent replies/notifications to users.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "senderName": { "type": "string" },
+        "sentAt": { "type": "string", "format": "date-time" },
+        "isRead": { "type": "boolean" }
+      },
+      "required": ["userId", "title", "message"]
     }
   },
   "firestore": {
@@ -120,6 +162,18 @@
     "playlist_applications": {
       "schema": "PlaylistApplication",
       "description": "Collection of applications submitted by artists to enter the Spotify playlist."
+    },
+    "contact_messages": {
+      "schema": "ContactMessage",
+      "description": "Collection of audiovisual or videoclip requests from the homepage."
+    },
+    "admin_messages": {
+      "schema": "AdminMessage",
+      "description": "Collection of help & support messages sent by registered users to administrators."
+    },
+    "user_notifications": {
+      "schema": "UserNotification",
+      "description": "Collection of personal notifications / replies for users from administrators."
     }
   }
 }

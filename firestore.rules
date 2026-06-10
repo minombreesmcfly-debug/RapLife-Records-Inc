@@ -138,5 +138,53 @@ service cloud.firestore {
       allow create: if true; // Let anyone submit a playlist application
       allow read, update, delete: if isAdmin();
     }
+
+    // Contact Messages Validation
+    function isValidContactMessage(data) {
+      return data.keys().hasAll(['name', 'email', 'projectType', 'comments']) &&
+             data.name is string && data.name.size() <= 200 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.projectType is string && data.projectType.size() <= 100 &&
+             data.comments is string && data.comments.size() <= 10000;
+    }
+
+    match /contact_messages/{messageId} {
+      allow create: if true; // Anyone can send a visual contact inquiry form
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Admin Messages Validation (Support and help requests sent by logged in users)
+    function isValidAdminMessage(data) {
+      return data.keys().hasAll(['userId', 'message']) &&
+             data.userId == request.auth.uid &&
+             data.message is string && data.message.size() <= 5000 &&
+             (!('userEmail' in data) || data.userEmail is string) &&
+             (!('userName' in data) || data.userName is string) &&
+             (!('status' in data) || data.status in ['pending', 'read', 'replied']);
+    }
+
+    match /admin_messages/{messageId} {
+      allow create: if isSignedIn() && isValidAdminMessage(request.resource.data);
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // User Notifications (sent by system/admins to specific users)
+    function isValidUserNotification(data) {
+      return data.keys().hasAll(['userId', 'title', 'message']) &&
+             data.userId is string &&
+             data.title is string && data.title.size() <= 200 &&
+             data.message is string && data.message.size() <= 2000;
+    }
+
+    match /user_notifications/{notificationId} {
+      allow create: if isAdmin() && isValidUserNotification(request.resource.data);
+      allow get, list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Allow admin everything
+      allow read, write: if isAdmin();
+    }
   }
 }
