@@ -9,7 +9,7 @@ import { Shield, Upload, Star, Music, User, Check, X, Radio, PlayCircle, PlusCir
 
 const AdminView = () => {
   const { user, isAdmin } = useAuth();
-  const { play } = useMusic();
+  const { play, setRadioMode, playRadioPlaylist } = useMusic();
   
   // Refs for hidden file inputs
   const radioFileInputRef = useRef<HTMLInputElement>(null);
@@ -117,6 +117,9 @@ const AdminView = () => {
   const [uploadingLocalRadio, setUploadingLocalRadio] = useState(false);
   const [localRadioFile, setLocalRadioFile] = useState<File | null>(null);
   const [savingRadioOrder, setSavingRadioOrder] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [editingTrackIndex, setEditingTrackIndex] = useState<number | null>(null);
+  const [editingTrackName, setEditingTrackName] = useState<string>('');
 
   const fetchLocalRadioTracks = async () => {
     try {
@@ -125,14 +128,30 @@ const AdminView = () => {
         const data = await res.json();
         
         let fileOrder: string[] = [];
+        // First try to fetch from Firestore
         try {
           const docRef = doc(db, 'config', 'radioOrder');
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             fileOrder = docSnap.data().fileOrder || [];
+            try {
+              localStorage.setItem('raplife_radio_order', JSON.stringify(fileOrder));
+            } catch (_) {}
+          } else {
+            // Check localStorage
+            const cached = localStorage.getItem('raplife_radio_order');
+            if (cached) {
+              fileOrder = JSON.parse(cached);
+            }
           }
         } catch (err) {
-          console.error("[RADIO ADM] Error getting custom radioOrder:", err);
+          console.warn("[RADIO ADM] Firestore offline or error getting radioOrder. Using localStorage fallback:", err);
+          try {
+            const cached = localStorage.getItem('raplife_radio_order');
+            if (cached) {
+              fileOrder = JSON.parse(cached);
+            }
+          } catch (_) {}
         }
 
         if (fileOrder && fileOrder.length > 0) {
@@ -166,16 +185,22 @@ const AdminView = () => {
 
   const handleSaveRadioOrder = async () => {
     setSavingRadioOrder(true);
+    const fileOrder = localRadioTracks.map(t => t.fullName).filter(Boolean);
+    
+    // Always save to localStorage immediately for fast, offline-first reliability
     try {
-      const fileOrder = localRadioTracks.map(t => t.fullName).filter(Boolean);
+      localStorage.setItem('raplife_radio_order', JSON.stringify(fileOrder));
+    } catch (_) {}
+
+    try {
       await setDoc(doc(db, 'config', 'radioOrder'), {
         fileOrder,
         updatedAt: serverTimestamp()
       });
-      alert('¡Orden de reproducción favorito guardado con éxito!');
+      alert('¡Orden de reproducción guardado con éxito en la nube y localmente!');
     } catch (err: any) {
-      console.error("Error saving radio order:", err);
-      alert('Error al guardar el orden: ' + err.message);
+      console.warn("Soft error setting Firestore radioOrder, but saved in localStorage:", err);
+      alert('¡Orden de reproducción guardado localmente en tu navegador! (El servidor de base de datos está offline transitoriamente)');
     } finally {
       setSavingRadioOrder(false);
     }
@@ -187,8 +212,12 @@ const AdminView = () => {
       return;
     }
     setSavingRadioOrder(true);
+    const fileOrder = localRadioTracks.map(t => t.fullName).filter(Boolean);
     try {
-      const fileOrder = localRadioTracks.map(t => t.fullName).filter(Boolean);
+      localStorage.setItem('raplife_radio_order', JSON.stringify(fileOrder));
+    } catch (_) {}
+
+    try {
       await setDoc(doc(db, 'config', 'radioOrder'), {
         fileOrder,
         updatedAt: serverTimestamp()
@@ -199,70 +228,78 @@ const AdminView = () => {
       setSavingRadioOrder(false);
     }
     const firstTrack = localRadioTracks[0];
-    play(firstTrack);
-    alert(`¡Iniciando RapLife Radio en el orden elegido! Sonando ahora: ${firstTrack.title}`);
+    playRadioPlaylist(localRadioTracks, 0);
+    alert(`¡Iniciando RapLife Radio en el orden de reproducción elegido! Sonando ahora: "${firstTrack.title || firstTrack.fullName}"`);
   };
 
   useEffect(() => {
     if (!isAdmin) return;
     const fetchData = async () => {
       // Artists
-      const artistQ = query(collection(db, 'users'));
-      const artistSnap = await getDocs(artistQ);
-      let loadedArtists = artistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      try {
+        const artistQ = query(collection(db, 'users'));
+        const artistSnap = await getDocs(artistQ);
+        let loadedArtists = artistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      const hasAitana = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('aitana'));
-      const hasJay = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('jay'));
+        const hasAitana = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('aitana'));
+        const hasJay = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('jay'));
 
-      if (!hasAitana) {
-        const docId = 'artist_aitana_blue';
-        await setDoc(doc(db, 'users', docId), {
-          uid: docId,
-          displayName: 'Aitana Blue Dream',
-          role: 'artist',
-          category: 'G FUNK / EDM',
-          bio: 'Fusión sublime que une las melodías grooves del G-Funk clásico de West Coast con la vibración electrónica y bailable del EDM moderno.',
-          photoURL: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600&auto=format&fit=crop',
-          spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
-          instagramUrl: 'https://instagram.com/',
-          appleMusicUrl: '',
-          isPinned: true,
-          isExclusive: true,
-          plan: 'premium',
-          createdAt: serverTimestamp()
-        });
+        if (!hasAitana) {
+          const docId = 'artist_aitana_blue';
+          await setDoc(doc(db, 'users', docId), {
+            uid: docId,
+            displayName: 'Aitana Blue Dream',
+            role: 'artist',
+            category: 'G FUNK / EDM',
+            bio: 'Fusión sublime que une las melodías grooves del G-Funk clásico de West Coast con la vibración electrónica y bailable del EDM moderno.',
+            photoURL: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600&auto=format&fit=crop',
+            spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
+            instagramUrl: 'https://instagram.com/',
+            appleMusicUrl: '',
+            isPinned: true,
+            isExclusive: true,
+            plan: 'premium',
+            createdAt: serverTimestamp()
+          });
+        }
+
+        if (!hasJay) {
+          const docId = 'artist_jay_santana';
+          await setDoc(doc(db, 'users', docId), {
+            uid: docId,
+            displayName: 'Jay Santana',
+            role: 'artist',
+            category: 'RAP / REGIONAL MEXICANO TRAP',
+            bio: 'Fusión pionera que une la crudeza del rap de calle con los arreglos profundos y el alma del Regional Mexicano en ritmo Trap.',
+            photoURL: '/src/assets/images/jay_santana_ghetto_1781111479453.png',
+            spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
+            instagramUrl: 'https://instagram.com/',
+            appleMusicUrl: '',
+            isPinned: true,
+            isExclusive: true,
+            plan: 'premium',
+            createdAt: serverTimestamp()
+          });
+        }
+
+        if (!hasAitana || !hasJay) {
+          const updatedSnap = await getDocs(artistQ);
+          loadedArtists = updatedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+
+        setArtists(loadedArtists);
+      } catch (err) {
+        console.error("Error loading artists in Admin dashboard:", err);
       }
-
-      if (!hasJay) {
-        const docId = 'artist_jay_santana';
-        await setDoc(doc(db, 'users', docId), {
-          uid: docId,
-          displayName: 'Jay Santana',
-          role: 'artist',
-          category: 'RAP / REGIONAL MEXICANO TRAP',
-          bio: 'Fusión pionera que une la crudeza del rap de calle con los arreglos profundos y el alma del Regional Mexicano en ritmo Trap.',
-          photoURL: '/src/assets/images/jay_santana_ghetto_1781111479453.png',
-          spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
-          instagramUrl: 'https://instagram.com/',
-          appleMusicUrl: '',
-          isPinned: true,
-          isExclusive: true,
-          plan: 'premium',
-          createdAt: serverTimestamp()
-        });
-      }
-
-      if (!hasAitana || !hasJay) {
-        const updatedSnap = await getDocs(artistQ);
-        loadedArtists = updatedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      }
-
-      setArtists(loadedArtists);
 
       // Pending tracks
-      const trackQ = query(collection(db, 'tracks'), where('status', '==', 'pending'));
-      const trackSnap = await getDocs(trackQ);
-      setPendingTracks(trackSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      try {
+        const trackQ = query(collection(db, 'tracks'), where('status', '==', 'pending'));
+        const trackSnap = await getDocs(trackQ);
+        setPendingTracks(trackSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error("Error loading pending tracks in Admin dashboard:", err);
+      }
 
       // Fetch Spotify config
       try {
@@ -460,18 +497,31 @@ const AdminView = () => {
     }
   };
 
-  const handleRenameLocalRadio = async (fullName: string) => {
+  const handleRenameLocalRadio = (idx: number, fullName: string) => {
     const extIndex = fullName.lastIndexOf('.');
     const baseSuggestion = extIndex !== -1 ? fullName.substring(0, extIndex) : fullName;
+    setEditingTrackIndex(idx);
+    setEditingTrackName(baseSuggestion);
+  };
+
+  const saveInlineRename = async (oldFullName: string, newBaseName: string) => {
+    if (!newBaseName || newBaseName.trim() === '') {
+      alert('El nombre no puede estar vacío.');
+      return;
+    }
     
-    const newName = prompt(`Introduce el nuevo nombre para "${fullName}" (sin extensión):`, baseSuggestion);
-    if (!newName || newName.trim() === '' || newName.trim() === baseSuggestion) return;
-    
+    const extIndex = oldFullName.lastIndexOf('.');
+    const oldBase = extIndex !== -1 ? oldFullName.substring(0, extIndex) : oldFullName;
+    if (newBaseName.trim() === oldBase) {
+      setEditingTrackIndex(null);
+      return;
+    }
+
     try {
       const res = await fetch('/api/rename-radio-local', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldFileName: fullName, newFileName: newName.trim() })
+        body: JSON.stringify({ oldFileName: oldFullName, newFileName: newBaseName.trim() })
       });
 
       if (!res.ok) {
@@ -479,10 +529,10 @@ const AdminView = () => {
         throw new Error(data.error || 'Error al renombrar');
       }
 
-      alert('¡Archivo renombrado con éxito!');
+      setEditingTrackIndex(null);
       await fetchLocalRadioTracks();
     } catch (err: any) {
-      alert('Error al renombrar: ' + err.message);
+      alert('Error al de renombre: ' + err.message);
     }
   };
 
@@ -600,182 +650,198 @@ const AdminView = () => {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
-        {/* Left Column: Radio Controls */}
+        {/* Left Column: Unified Radio Controls */}
         <div className="space-y-10 flex flex-col">
-          {/* Card 1: Radio Interstitials Nube */}
+          {/* Card: Unified Local Radio Workspace */}
           <div className="bg-brand-dark p-8 rounded-[2rem] border-4 border-boombox-gray space-y-6 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-              <Radio size={120} />
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
+              <Radio size={150} />
             </div>
-            
+
             <div className="flex items-center gap-3 relative">
-              <Music className="text-brand-yellow" size={24} />
-              <h2 className="text-2xl font-black italic tracking-tighter uppercase">RADIO INTERSTITIALS</h2>
+              <Radio className="text-brand-yellow animate-pulse" size={26} />
+              <h2 className="text-2xl font-black italic tracking-tighter uppercase text-white">RAPLIFE RADIO</h2>
             </div>
-            <p className="text-gray-500 text-xs font-semibold leading-relaxed uppercase tracking-wider">Sube notas de voz o intros de radio que se reproducirán automáticamente entre cada 2-3 canciones en la nube.</p>
             
-            <div className="space-y-4 pt-2">
-               <div className="space-y-1">
-                  <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1">TÍTULO DEL CLIP EN NUBE</label>
-                  <input 
-                    type="text" placeholder="Ej: RapLife ID 01" 
-                    className="w-full bg-black/50 border border-white/10 p-4 rounded-xl focus:border-brand-yellow outline-none transition-all font-bold text-sm"
-                    value={radioTitle} onChange={e => setRadioTitle(e.target.value)}
-                  />
-               </div>
-               
-               <div 
-                 onClick={() => radioFileInputRef.current?.click()}
-                 className="relative group/upload cursor-pointer"
-               >
-                  <input 
-                    type="file" 
-                    ref={radioFileInputRef}
-                    accept="audio/*" 
-                    className="hidden"
-                    onChange={e => {
-                      const file = e.target.files?.[0] || null;
-                      setRadioFile(file);
-                      if (file && !radioTitle) {
-                        const clean = file.name.split('.').slice(0, -1).join('.')
-                          .replace(/[_-]/g, ' ')
-                          .replace(/\s+/g, ' ')
-                          .trim();
-                        setRadioTitle(clean);
-                      }
-                    }}
-                  />
-                  <div className="w-full border-2 border-dashed border-white/10 p-6 rounded-xl flex flex-col items-center group-hover/upload:border-brand-yellow/50 transition-all bg-white/[0.02]">
-                     <Upload size={24} className="text-gray-600 group-hover/upload:text-brand-yellow mb-2 group-hover/upload:scale-110 transition-transform" />
-                     <p className="text-xs font-black italic uppercase tracking-tighter text-gray-500 text-center truncate max-w-full">
-                       {radioFile ? radioFile.name : 'SELECCIONA AUDIO NUBE'}
-                     </p>
-                     <p className="text-[9px] text-gray-600 font-bold mt-1 uppercase tracking-widest">MP3 / WAV</p>
-                  </div>
-               </div>
-               <button 
-                 onClick={handleUploadRadio}
-                 disabled={uploading}
-                 className="w-full py-4 bg-brand-yellow text-black font-black italic uppercase text-xs rounded-xl shadow-glow hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-20 disabled:grayscale cursor-pointer"
-               >
-                 {uploading ? 'PROCESANDO...' : 'INYECTAR EN RADIO NUBE'}
-               </button>
+            <p className="text-gray-400 text-xs font-semibold leading-relaxed uppercase tracking-wider">
+              ¡Sube canciones, promos, anuncios o intros directamente en la radio local! Alterna y acomoda el orden de reproducción como prefieras.
+            </p>
 
-               {radioStatus.message && (
-                 <div className={`p-4 rounded-xl text-center text-[10px] font-black uppercase tracking-wider border ${
-                   radioStatus.type === 'success' 
-                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
-                     : 'bg-red-500/10 border-red-500/30 text-red-400'
-                 }`}>
-                   {radioStatus.message}
-                 </div>
-               )}
-            </div>
-          </div>
-
-          {/* Card 2: Local Server Radio Folder */}
-          <div className="bg-brand-dark p-8 rounded-[2rem] border-4 border-boombox-gray space-y-6 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-              <Radio size={120} />
-            </div>
-
-            <h3 className="text-xl font-black italic tracking-tighter uppercase text-brand-yellow flex items-center gap-2">
-              <Radio size={22} /> AUDIO LOCAL (SERVIDOR)
-            </h3>
-             <p className="text-gray-500 text-xs font-semibold leading-relaxed uppercase tracking-wider">
-               Carga tus audios favoritos directamente al reproductor de RapLife Radio en el servidor.
-             </p>
-
+            {/* Drop and Pick Upload Area */}
             <div className="space-y-4">
-              <div className="p-4 bg-black/40 border border-white/5 rounded-2xl space-y-3">
+              <div className="p-4 bg-black/45 border border-white/5 rounded-2xl space-y-3">
+                <input 
+                  type="file" 
+                  ref={localRadioFileInputRef}
+                  accept="audio/*" 
+                  className="hidden"
+                  onChange={e => setLocalRadioFile(e.target.files?.[0] || null)}
+                />
+                
                 <div 
+                  onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+                  onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragActive(false);
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                      setLocalRadioFile(e.dataTransfer.files[0]);
+                    }
+                  }}
                   onClick={() => localRadioFileInputRef.current?.click()}
-                  className="relative group/local cursor-pointer"
+                  className={`w-full border-2 border-dashed p-6 rounded-xl flex flex-col items-center justify-center transition-all bg-white/[0.01] cursor-pointer ${
+                    dragActive 
+                      ? 'border-brand-yellow bg-brand-yellow/10 scale-[1.01]' 
+                      : 'border-white/10 hover:border-brand-yellow/40'
+                  }`}
                 >
-                   <input 
-                     type="file" 
-                     ref={localRadioFileInputRef}
-                     accept="audio/*" 
-                     className="hidden"
-                     onChange={e => setLocalRadioFile(e.target.files?.[0] || null)}
-                   />
-                   <div className="w-full border-2 border-dashed border-white/5 p-4 rounded-xl flex flex-col items-center group-hover/local:border-brand-yellow/40 transition-all bg-white/[0.01]">
-                      <Upload size={18} className="text-gray-600 group-hover/local:text-brand-yellow mb-1" />
-                      <p className="text-[10px] font-black uppercase text-gray-500 text-center truncate max-w-full">
-                        {localRadioFile ? localRadioFile.name : 'SELECCIONAR .MP3 LOCAL'}
-                      </p>
-                   </div>
+                  <Upload size={24} className={`mb-2 transition-transform ${dragActive ? 'text-brand-yellow scale-110' : 'text-gray-650'}`} />
+                  <p className="text-xs font-black uppercase text-gray-400 text-center truncate max-w-full">
+                    {localRadioFile ? localRadioFile.name : 'ARRASTRA O SELECCIONA AUDIO'}
+                  </p>
+                  <p className="text-[9px] text-gray-500 font-bold mt-1 uppercase tracking-widest">WAV, MP3, M4A, OGG</p>
                 </div>
+
                 {localRadioFile && (
-                  <button 
-                    onClick={handleUploadLocalRadio}
-                    disabled={uploadingLocalRadio}
-                    className="w-full py-3 bg-brand-yellow text-black font-black uppercase text-xs rounded-xl transition-all cursor-pointer"
-                  >
-                    {uploadingLocalRadio ? 'SUBIENDO...' : 'SUBIR ARCHIVO DIRECTO'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => setLocalRadioFile(null)}
+                      className="px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500/20 active:scale-95 text-xs font-black uppercase rounded-xl transition-all cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                    <button 
+                      onClick={handleUploadLocalRadio}
+                      disabled={uploadingLocalRadio}
+                      className="flex-1 py-3 bg-brand-yellow text-black font-black uppercase text-xs rounded-xl shadow-glow hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-30 disabled:grayscale cursor-pointer"
+                    >
+                      {uploadingLocalRadio ? 'CARGANDO AUDIO...' : 'SUBIR E INYECTAR DIRECTO'}
+                    </button>
+                  </div>
                 )}
               </div>
 
-              <div className="space-y-2 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar">
-                {localRadioTracks.map((track, idx) => (
-                  <div key={track.fullName || track.id || `local-track-${idx}`} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl text-xs hover:bg-white/5 transition-all gap-2">
-                    <div className="flex items-center gap-2 overflow-hidden flex-grow">
-                      {/* Move Up / Down Handles/Buttons */}
-                      <div className="flex flex-col gap-0.5 mr-1 flex-shrink-0">
-                        <button
-                          onClick={() => moveTrack(idx, 'up')}
-                          disabled={idx === 0}
-                          className="p-1 text-gray-500 hover:text-brand-yellow hover:bg-white/5 disabled:opacity-20 disabled:hover:text-gray-500 disabled:hover:bg-transparent rounded transition-all cursor-pointer"
-                          title="Subir de posición"
-                        >
-                          <ChevronUp size={14} />
-                        </button>
-                        <button
-                          onClick={() => moveTrack(idx, 'down')}
-                          disabled={idx === localRadioTracks.length - 1}
-                          className="p-1 text-gray-500 hover:text-brand-yellow hover:bg-white/5 disabled:opacity-20 disabled:hover:text-gray-500 disabled:hover:bg-transparent rounded transition-all cursor-pointer"
-                          title="Bajar de posición"
-                        >
-                          <ChevronDown size={14} />
-                        </button>
-                      </div>
+              {/* Sequential Playlist */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-[10px] font-black italic uppercase tracking-wider text-gray-500">
+                    SECUENCIA DE REPRODUCCIÓN ({localRadioTracks.length})
+                  </span>
+                  {localRadioTracks.length > 0 && (
+                    <span className="text-[9px] font-sans text-brand-yellow/60 uppercase font-mono">
+                      ARRASTRA CON LAS FLECHAS PARA ORDENAR
+                    </span>
+                  )}
+                </div>
 
-                      <Music size={14} className="text-brand-yellow flex-shrink-0" />
-                      <div className="truncate">
-                        <p className="font-bold truncate text-gray-300">
-                          <span className="text-brand-yellow/50 font-mono text-[10px] mr-1">#{idx + 1}</span>
-                          {track.title || track.fullName}
-                        </p>
-                        <p className="text-[9px] text-gray-500 uppercase font-mono mt-0.5">
-                          {track.artistName} {track.fileSizeHuman && `• ${track.fileSizeHuman}`}
-                        </p>
+                <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1 custom-scrollbar">
+                  {localRadioTracks.map((track, idx) => {
+                    const isEditing = editingTrackIndex === idx;
+                    if (isEditing) {
+                      return (
+                        <div key={track.fullName || track.id || `local-track-${idx}`} className="flex items-center justify-between p-3 bg-brand-yellow/10 border border-brand-yellow/30 rounded-xl text-xs transition-all gap-2">
+                          <div className="flex items-center gap-2 overflow-hidden flex-grow">
+                            <Music size={14} className="text-brand-yellow flex-shrink-0 animate-pulse" />
+                            <div className="flex items-center gap-1.5 flex-grow">
+                              <span className="text-brand-yellow font-mono text-[10px] mr-0.5">#{idx + 1}</span>
+                              <input
+                                type="text"
+                                className="bg-black/80 border border-brand-yellow/45 text-white font-bold text-xs px-2 py-1 rounded outline-none w-full focus:border-brand-yellow"
+                                value={editingTrackName}
+                                onChange={(e) => setEditingTrackName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    saveInlineRename(track.fullName, editingTrackName);
+                                  } else if (e.key === 'Escape') {
+                                    setEditingTrackIndex(null);
+                                  }
+                                }}
+                                autoFocus
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => saveInlineRename(track.fullName, editingTrackName)}
+                              className="p-1.5 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/10 rounded-lg transition-colors active:scale-95"
+                              title="Guardar nombre"
+                            >
+                              <Check size={14} />
+                            </button>
+                            <button
+                              onClick={() => setEditingTrackIndex(null)}
+                              className="p-1.5 text-gray-400 hover:text-white hover:bg-white/15 rounded-lg transition-colors active:scale-95"
+                              title="Cancelar"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={track.fullName || track.id || `local-track-${idx}`} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl text-xs hover:bg-white/5 transition-all gap-2">
+                        <div className="flex items-center gap-2 overflow-hidden flex-grow">
+                          {/* Move Up / Down Buttons */}
+                          <div className="flex flex-col gap-0.5 mr-1 flex-shrink-0">
+                            <button
+                              onClick={() => moveTrack(idx, 'up')}
+                              disabled={idx === 0}
+                              className="p-1 text-gray-500 hover:text-brand-yellow hover:bg-white/5 disabled:opacity-10 disabled:hover:text-gray-500 disabled:hover:bg-transparent rounded transition-all cursor-pointer"
+                              title="Subir posición"
+                            >
+                              <ChevronUp size={14} />
+                            </button>
+                            <button
+                              onClick={() => moveTrack(idx, 'down')}
+                              disabled={idx === localRadioTracks.length - 1}
+                              className="p-1 text-gray-500 hover:text-brand-yellow hover:bg-white/5 disabled:opacity-10 disabled:hover:text-gray-500 disabled:hover:bg-transparent rounded transition-all cursor-pointer"
+                              title="Bajar posición"
+                            >
+                              <ChevronDown size={14} />
+                            </button>
+                          </div>
+
+                          <Music size={14} className="text-brand-yellow/70 flex-shrink-0" />
+                          <div className="truncate animate-fadeIn">
+                            <p className="font-bold truncate text-gray-300">
+                              <span className="text-brand-yellow font-mono text-[10px] mr-1.5">#{idx + 1}</span>
+                              {track.title || track.fullName}
+                            </p>
+                            <p className="text-[9px] text-gray-550 uppercase font-mono mt-0.5">
+                              {track.artistName} {track.fileSizeHuman && `• ${track.fileSizeHuman}`}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button 
+                            onClick={() => handleRenameLocalRadio(idx, track.fullName || '')}
+                            className="p-2 text-gray-400 hover:text-brand-yellow hover:bg-brand-yellow/10 rounded-lg transition-colors active:scale-95"
+                            title="Cambiar nombre / Editar"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteLocalRadio(track.fullName || '')}
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors active:scale-95"
+                            title="Eliminar audio"
+                          >
+                            <Trash size={13} />
+                          </button>
+                        </div>
                       </div>
+                    );
+                  })}
+                  {localRadioTracks.length === 0 && (
+                    <div className="py-12 text-center text-gray-600 border border-white/[0.03] rounded-2xl bg-black/20 text-[10px] font-black uppercase tracking-wider italic">
+                      NO HAY ARCHIVOS EN LA RADIO LOCAL. ¡SUBE UNO ARRIBA!
                     </div>
-                    
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button 
-                        onClick={() => handleRenameLocalRadio(track.fullName || '')}
-                        className="p-2 text-gray-400 hover:text-brand-yellow hover:bg-brand-yellow/10 rounded-lg transition-colors active:scale-95"
-                        title="Cambiar nombre / Editar"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteLocalRadio(track.fullName || '')}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors active:scale-95"
-                        title="Eliminar del Servidor"
-                      >
-                        <Trash size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {localRadioTracks.length === 0 && (
-                  <div className="py-8 text-center text-gray-650 text-[10px] font-black uppercase tracking-wider italic">
-                    NO HAY ARCHIVOS LOCALES EN EL SERVIDOR
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               {localRadioTracks.length > 0 && (
@@ -792,7 +858,7 @@ const AdminView = () => {
                   <button
                     onClick={handlePlayRadioWithOrder}
                     className="flex items-center justify-center gap-2 py-3 px-4 bg-brand-yellow text-black hover:bg-brand-yellow/90 active:scale-95 border-2 border-brand-yellow hover:border-brand-yellow/90 font-black uppercase text-[10px] tracking-wider rounded-xl transition-all shadow-[0_4px_15px_rgba(248,251,2,0.15)] cursor-pointer"
-                    title="Guardar orden e iniciar la radio desde la primera canción"
+                    title="Iniciar radio con el orden guardado"
                   >
                     <Play size={13} fill="black" />
                     INICIAR RADIO

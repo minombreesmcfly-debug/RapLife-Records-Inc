@@ -39,6 +39,27 @@ function getGeminiClient(userKey?: string): GoogleGenAI {
   return aiClient;
 }
 
+// Error logging to file for easy debugging of server startup or runtime crash
+try {
+  fs.writeFileSync(path.join(process.cwd(), 'server-crash.log'), `Server script loaded at ${new Date().toISOString()}\n`);
+} catch (e) {}
+
+process.on('uncaughtException', (err) => {
+  const msg = `[UNCAUGHT EXCEPTION] ${new Date().toISOString()}: ${err.stack || err}\n`;
+  console.error(msg);
+  try {
+    fs.appendFileSync(path.join(process.cwd(), 'server-crash.log'), msg);
+  } catch (e) {}
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  const msg = `[UNHANDLED REJECTION] ${new Date().toISOString()}: ${reason}\n`;
+  console.error(msg);
+  try {
+    fs.appendFileSync(path.join(process.cwd(), 'server-crash.log'), msg);
+  } catch (e) {}
+});
+
 // Read firebase config safely
 let firebaseConfig: any = {};
 try {
@@ -52,12 +73,13 @@ try {
   console.error('[SERVER] Error reading firebase-applet-config.json:', error);
 }
 
-// Initialize Firebase Admin SDK
-// This works automatically in Cloud Run using the default service account
-admin.initializeApp({
-  projectId: firebaseConfig.projectId,
-  storageBucket: firebaseConfig.storageBucket
-});
+// Initialize Firebase Admin SDK safely (prevent double initialization)
+if (admin.apps.length === 0) {
+  admin.initializeApp({
+    projectId: firebaseConfig.projectId,
+    storageBucket: firebaseConfig.storageBucket
+  });
+}
 
 console.log(`[SERVER] Initialized Firebase Admin for project: ${firebaseConfig.projectId}`);
 console.log(`[SERVER] Using storage bucket from config: ${firebaseConfig.storageBucket}`);
@@ -70,6 +92,13 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(cors());
+  app.use((req, res, next) => {
+    const logMsg = `[REQUEST] ${new Date().toISOString()}: ${req.method} ${req.url}\n`;
+    try {
+      fs.appendFileSync(path.join(process.cwd(), 'server-requests.log'), logMsg);
+    } catch(e) {}
+    next();
+  });
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -410,7 +439,7 @@ CRITICAL STYLING RULES:
   });
 
   // API to delete local radio files from assets/radio
-  app.delete('/api/delete-radio-local', express.json(), (req: any, res: any) => {
+  app.delete('/api/delete-radio-local', (req: any, res: any) => {
     try {
       const { fileName } = req.body;
       if (!fileName) {
@@ -442,7 +471,7 @@ CRITICAL STYLING RULES:
   });
 
   // API to rename local radio files from assets/radio
-  app.post('/api/rename-radio-local', express.json(), (req: any, res: any) => {
+  app.post('/api/rename-radio-local', (req: any, res: any) => {
     try {
       const { oldFileName, newFileName } = req.body;
       if (!oldFileName || !newFileName) {
@@ -605,6 +634,15 @@ CRITICAL STYLING RULES:
       stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
     });
   });
+
+  // Serve uploaded local radio assets directly
+  const radioDevPath = path.join(process.cwd(), 'public', 'assets', 'radio');
+  const radioProdPath = path.join(process.cwd(), 'dist', 'assets', 'radio');
+  const radioPath = process.env.NODE_ENV === 'production' ? radioProdPath : radioDevPath;
+  if (!fs.existsSync(radioPath)) {
+    fs.mkdirSync(radioPath, { recursive: true });
+  }
+  app.use('/assets/radio', express.static(radioPath));
 
   // Handle SPA and Vite
   if (process.env.NODE_ENV !== 'production') {

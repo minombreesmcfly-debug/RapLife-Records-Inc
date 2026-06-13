@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import fallbackConfig from '../../firebase-applet-config.json';
 
@@ -22,7 +22,9 @@ export const auth = getAuth(app);
 
 // Use custom db ID if defined, otherwise let Firestore use the default or project's database ID
 const firestoreDbId = (metaEnv.VITE_FIREBASE_FIRESTORE_DATABASE_ID as string) || fallbackConfig.firestoreDatabaseId;
-export const db = getFirestore(app, firestoreDbId);
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+}, firestoreDbId || undefined);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 

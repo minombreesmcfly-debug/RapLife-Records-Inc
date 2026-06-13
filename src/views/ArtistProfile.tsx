@@ -149,28 +149,33 @@ const ArtistProfileView = () => {
   useEffect(() => {
     const fetchArtist = async () => {
       if (!uid) return;
-      const docRef = doc(db, 'users', uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setArtist(data);
-        setEditForm({
-          displayName: data.displayName || '',
-          bio: data.bio || '',
-          photoURL: data.photoURL || '',
-          spotifyUrl: data.spotifyUrl || '',
-          instagramUrl: data.instagramUrl || '',
-          appleMusicUrl: data.appleMusicUrl || '',
-          isPinned: data.isPinned || false,
-          isExclusive: data.isExclusive !== false
-        });
-        setReelsList(data.reels || []);
-      }
+      try {
+        const docRef = doc(db, 'users', uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setArtist(data);
+          setEditForm({
+            displayName: data.displayName || '',
+            bio: data.bio || '',
+            photoURL: data.photoURL || '',
+            spotifyUrl: data.spotifyUrl || '',
+            instagramUrl: data.instagramUrl || '',
+            appleMusicUrl: data.appleMusicUrl || '',
+            isPinned: data.isPinned || false,
+            isExclusive: data.isExclusive !== false
+          });
+          setReelsList(data.reels || []);
+        }
 
-      const q = query(collection(db, 'tracks'), where('artistId', '==', uid), orderBy('createdAt', 'desc'));
-      const trackSnap = await getDocs(q);
-      setTracks(trackSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
+        const q = query(collection(db, 'tracks'), where('artistId', '==', uid), orderBy('createdAt', 'desc'));
+        const trackSnap = await getDocs(q);
+        setTracks(trackSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error("Error loading artist in profile page:", err);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchArtist();
   }, [uid]);

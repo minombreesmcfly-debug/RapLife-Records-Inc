@@ -29,6 +29,9 @@ interface MusicContextType {
   currentTime: number;
   duration: number;
   seek: (time: number) => void;
+  playlist: Track[];
+  setPlaylist: (list: Track[]) => void;
+  playRadioPlaylist: (list: Track[], startIndex?: number) => void;
 }
 
 const MusicContext = createContext<MusicContextType | null>(null);
@@ -42,6 +45,21 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
   const [songsPlayedCount, setSongsPlayedCount] = useState(0);
+
+  // Refs for tracking state inside stale event handler closures
+  const statesRef = useRef({
+    currentTrack,
+    radioMode,
+    playlist,
+  });
+
+  useEffect(() => {
+    statesRef.current = {
+      currentTrack,
+      radioMode,
+      playlist,
+    };
+  }, [currentTrack, radioMode, playlist]);
 
   // Time tracking states
   const [currentTime, setCurrentTime] = useState(0);
@@ -153,7 +171,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     audioRef.current.onerror = (e) => {
       const err = audioRef.current?.error;
-      console.warn("[RADIO] Audio element error occurred:", err?.code, err?.message);
+      console.error("[RADIO] Audio element error occurred:", err?.code, err?.message);
+      // Self-healing radio: auto-skip to the next track in queue after a short delay so play doesn't stall
+      setTimeout(() => {
+        console.log("[RADIO] Auto-skipping to the next track due to playback error...");
+        nextTrack();
+      }, 2500);
     };
     audioRef.current.ontimeupdate = () => {
       if (audioRef.current) {
@@ -182,21 +205,49 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const locals = await localRes.json();
           if (locals && locals.length > 0) {
             // Check if there is configured play order
+            let order: string[] = [];
             try {
               const docSnap = await getDoc(doc(db, 'config', 'radioOrder'));
               if (docSnap.exists()) {
-                const order: string[] = docSnap.data().fileOrder || [];
-                if (order.length > 0) {
-                  const firstInOrder = locals.find((t: any) => t.fullName === order[0]);
-                  if (firstInOrder) {
-                    initial = firstInOrder;
-                  }
-                }
+                order = docSnap.data().fileOrder || [];
+                try {
+                  localStorage.setItem('raplife_radio_order', JSON.stringify(order));
+                } catch (_) {}
+              } else {
+                const cached = localStorage.getItem('raplife_radio_order');
+                if (cached) order = JSON.parse(cached);
               }
-            } catch (e) {}
+            } catch (e) {
+              console.warn("[RADIO] Firestore offline during initial load. Using localStorage:", e);
+              try {
+                const cached = localStorage.getItem('raplife_radio_order');
+                if (cached) order = JSON.parse(cached);
+              } catch (_) {}
+            }
+
+            // Sync with local playlist (sorted)
+            let sortedLocals = [...locals];
+            if (order && order.length > 0) {
+              sortedLocals.sort((a, b) => {
+                const idxA = order.indexOf(a.fullName || '');
+                const idxB = order.indexOf(b.fullName || '');
+                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                if (idxA !== -1) return -1;
+                if (idxB !== -1) return 1;
+                return 0;
+              });
+            }
+            setPlaylist(sortedLocals);
+
+            if (order.length > 0) {
+              const firstInOrder = sortedLocals.find((t: any) => t.fullName === order[0]);
+              if (firstInOrder) {
+                initial = firstInOrder;
+              }
+            }
 
             if (!initial) {
-              initial = locals[0];
+              initial = sortedLocals[0];
             }
           }
         }
@@ -267,113 +318,46 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const handleTrackEnd = () => {
-    if (radioMode) {
+    if (statesRef.current.radioMode) {
       nextTrack();
     } else {
       setIsPlaying(false);
     }
   };
 
-  const nextTrack = async () => {
-    // Logic: If there is a radioOrder configuration, follow the custom sequence.
-    // Otherwise: Pick a random song. Every 2-3 songs, pick an interstitial if available.
-    let next: Track | null = null;
-
-    // Fetch local files in real-time
-    let currentLocalTracks: Track[] = [];
-    try {
-      const res = await fetch('/api/radio-local-songs');
-      if (res.ok) {
-        currentLocalTracks = await res.json();
-      }
-    } catch (e) {
-      console.error("[RADIO] Error fetching local tracks in nextTrack:", e);
-    }
-
-    // Try fetching custom radio order first
-    let fileOrder: string[] = [];
-    try {
-      const docRef = doc(db, 'config', 'radioOrder');
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        fileOrder = docSnap.data().fileOrder || [];
-      }
-    } catch (err) {
-      console.error("[RADIO] Error fetching custom radioOrder:", err);
-    }
-
-    if (fileOrder && fileOrder.length > 0) {
-      // Find current track index in custom order list
+  const nextTrack = () => {
+    const currentTrackVal = statesRef.current.currentTrack;
+    const playlistVal = statesRef.current.playlist;
+    
+    // If we have an active playlist loaded, play sequentially!
+    if (playlistVal && playlistVal.length > 0) {
       let currentIndex = -1;
-      if (currentTrack) {
-        currentIndex = fileOrder.findIndex(f => 
-          f === currentTrack.fullName || 
-          (currentTrack.audioUrl && (currentTrack.audioUrl.endsWith('/' + f) || currentTrack.audioUrl.endsWith('/' + encodeURIComponent(f))))
+      
+      if (currentTrackVal) {
+        currentIndex = playlistVal.findIndex(t => 
+          t.fullName === currentTrackVal.fullName || 
+          t.audioUrl === currentTrackVal.audioUrl ||
+          (currentTrackVal.audioUrl && (currentTrackVal.audioUrl.endsWith('/' + t.fullName) || currentTrackVal.audioUrl.endsWith('/' + encodeURIComponent(t.fullName || ''))))
         );
       }
-
-      let nextIndex = 0;
-      if (currentIndex !== -1) {
-        nextIndex = (currentIndex + 1) % fileOrder.length;
-      }
-
-      const nextFileName = fileOrder[nextIndex];
-      // Match with loaded local songs
-      next = currentLocalTracks.find(t => t.fullName === nextFileName) || null;
-
-      if (next) {
-        console.log(`[RADIO] Sequential play activated: moving to track index ${nextIndex + 1}/${fileOrder.length} (${nextFileName})`);
-      }
+      
+      const nextIndex = currentIndex !== -1 ? (currentIndex + 1) % playlistVal.length : 0;
+      const nextTrackObj = playlistVal[nextIndex];
+      console.log(`[RADIO] Playlist transition: moving to index ${nextIndex + 1}/${playlistVal.length} (${nextTrackObj.title || nextTrackObj.fullName})`);
+      play(nextTrackObj);
+      return;
     }
 
-    // Fall back to random track logic if no custom ordering is found or failed to find next track
-    if (!next) {
-      const shouldPlayInterstitial = songsPlayedCount > 0 && songsPlayedCount % 2 === 0;
+    // Default fallback if playlist is empty (should not happen since we initialize it on mount)
+    console.warn("[RADIO] Playlist is empty in nextTrack");
+  };
 
-      if (shouldPlayInterstitial) {
-        const dbInterstitials: Track[] = [];
-        try {
-          const q = query(collection(db, 'tracks'), where('isRadioInterstitial', '==', true), limit(10));
-          const snap = await getDocs(q);
-          snap.forEach(d => {
-            dbInterstitials.push({ id: d.id, ...d.data() } as Track);
-          });
-        } catch (err) {
-          console.error("Error fetching db interstitials:", err);
-        }
-
-        const activeInterstitials = [...dbInterstitials, ...currentLocalTracks];
-        if (activeInterstitials.length > 0) {
-          const randomIndex = Math.floor(Math.random() * activeInterstitials.length);
-          next = activeInterstitials[randomIndex];
-          setSongsPlayedCount(0); // Reset after interstitial
-        }
-      }
-
-      if (!next) {
-        const dbTracks: Track[] = [];
-        try {
-          const q = query(collection(db, 'tracks'), where('isRadioInterstitial', '==', false), limit(25));
-          const snap = await getDocs(q);
-          snap.forEach(d => {
-            dbTracks.push({ id: d.id, ...d.data() } as Track);
-          });
-        } catch (err) {
-          console.error("Error fetching db tracks:", err);
-        }
-
-        const activeTracks = [...dbTracks, ...currentLocalTracks];
-        if (activeTracks.length > 0) {
-          const randomIndex = Math.floor(Math.random() * activeTracks.length);
-          next = activeTracks[randomIndex];
-          setSongsPlayedCount(prev => prev + 1);
-        }
-      }
-    }
-
-    if (next) {
-      play(next);
-    }
+  const playRadioPlaylist = (list: Track[], startIndex: number = 0) => {
+    if (!list || list.length === 0) return;
+    setPlaylist(list);
+    setRadioMode(true);
+    const startTrack = list[startIndex];
+    play(startTrack);
   };
 
   const play = (track: Track) => {
@@ -451,7 +435,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       fadeVolume,
       currentTime,
       duration,
-      seek 
+      seek,
+      playlist,
+      setPlaylist,
+      playRadioPlaylist
     }}>
       {children}
     </MusicContext.Provider>
