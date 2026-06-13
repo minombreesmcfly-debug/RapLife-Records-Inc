@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
-import { collection, query, getDocs, doc, updateDoc, addDoc, serverTimestamp, where, deleteDoc, setDoc, getDoc, limit } from 'firebase/firestore';
+import { collection, query, getDocs, doc, updateDoc, addDoc, serverTimestamp, where, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
 import { Shield, Upload, Star, Music, User, Check, X, Radio, PlayCircle, PlusCircle, Pencil, Trash, Link2 } from 'lucide-react';
@@ -15,7 +15,6 @@ const AdminView = () => {
 
   const [artists, setArtists] = useState<any[]>([]);
   const [pendingTracks, setPendingTracks] = useState<any[]>([]);
-  const [spotifyRequests, setSpotifyRequests] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [radioFile, setRadioFile] = useState<File | null>(null);
   const [radioTitle, setRadioTitle] = useState('');
@@ -33,8 +32,82 @@ const AdminView = () => {
     spotifyUrl: '',
     instagramUrl: '',
     appleMusicUrl: '',
-    isPinned: false
+    isPinned: false,
+    isExclusive: true,
+    reels: [] as string[]
   });
+  const [adminFormReelInput, setAdminFormReelInput] = useState('');
+  const [uploadingAdminPhoto, setUploadingAdminPhoto] = useState(false);
+
+  const compressAndGetBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 400;
+          const MAX_HEIGHT = 400;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height = Math.round((height * MAX_WIDTH) / width);
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width = Math.round((width * MAX_HEIGHT) / height);
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
+          } else {
+            resolve(e.target?.result as string);
+          }
+        };
+        img.onerror = reject;
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleAdminPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAdminPhoto(true);
+    try {
+      const storageRef = ref(storage, `artists/photos/admin_${Date.now()}_${file.name}`);
+      const uploadPromise = uploadBytes(storageRef, file).then(() => getDownloadURL(storageRef));
+      const timeoutPromise = new Promise<string>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000));
+      
+      let finalUrl = '';
+      try {
+        finalUrl = await Promise.race([uploadPromise, timeoutPromise]);
+        alert('¡Imagen de perfil del artista subida al servidor con éxito!');
+      } catch (uploadError) {
+        console.warn("Admin storage upload failed or timed out, falling back to local optimized Base64:", uploadError);
+        finalUrl = await compressAndGetBase64(file);
+        alert('¡Imagen del artista optimizada y cargada localmente con éxito (modo Base64-Ultra)!');
+      }
+
+      setArtistForm(prev => ({ ...prev, photoURL: finalUrl }));
+    } catch (err: any) {
+      console.error(err);
+      alert('Error al procesar la imagen del artista: ' + err.message);
+    } finally {
+      setUploadingAdminPhoto(false);
+    }
+  };
 
   // Local radio states
   const [localRadioTracks, setLocalRadioTracks] = useState<any[]>([]);
@@ -59,7 +132,55 @@ const AdminView = () => {
       // Artists
       const artistQ = query(collection(db, 'users'));
       const artistSnap = await getDocs(artistQ);
-      setArtists(artistSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      let loadedArtists = artistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const hasAitana = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('aitana'));
+      const hasJay = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('jay'));
+
+      if (!hasAitana) {
+        const docId = 'artist_aitana_blue';
+        await setDoc(doc(db, 'users', docId), {
+          uid: docId,
+          displayName: 'Aitana Blue Dream',
+          role: 'artist',
+          category: 'G FUNK / EDM',
+          bio: 'Fusión sublime que une las melodías grooves del G-Funk clásico de West Coast con la vibración electrónica y bailable del EDM moderno.',
+          photoURL: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600&auto=format&fit=crop',
+          spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
+          instagramUrl: 'https://instagram.com/',
+          appleMusicUrl: '',
+          isPinned: true,
+          isExclusive: true,
+          plan: 'premium',
+          createdAt: serverTimestamp()
+        });
+      }
+
+      if (!hasJay) {
+        const docId = 'artist_jay_santana';
+        await setDoc(doc(db, 'users', docId), {
+          uid: docId,
+          displayName: 'Jay Santana',
+          role: 'artist',
+          category: 'RAP / REGIONAL MEXICANO TRAP',
+          bio: 'Fusión pionera que une la crudeza del rap de calle con los arreglos profundos y el alma del Regional Mexicano en ritmo Trap.',
+          photoURL: '/src/assets/images/jay_santana_ghetto_1781111479453.png',
+          spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
+          instagramUrl: 'https://instagram.com/',
+          appleMusicUrl: '',
+          isPinned: true,
+          isExclusive: true,
+          plan: 'premium',
+          createdAt: serverTimestamp()
+        });
+      }
+
+      if (!hasAitana || !hasJay) {
+        const updatedSnap = await getDocs(artistQ);
+        loadedArtists = updatedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      }
+
+      setArtists(loadedArtists);
 
       // Pending tracks
       const trackQ = query(collection(db, 'tracks'), where('status', '==', 'pending'));
@@ -80,37 +201,11 @@ const AdminView = () => {
         console.error("Error fetching spotify admin config:", err);
       }
 
-      // Fetch Spotify Requests
-      try {
-        const reqQ = query(collection(db, 'spotify_requests'), limit(60));
-        const reqSnap = await getDocs(reqQ);
-        const reqsList = reqSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        reqsList.sort((a: any, b: any) => {
-          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return tB - tA;
-        });
-        setSpotifyRequests(reqsList);
-      } catch (err) {
-        console.error("Error fetching spotify requests:", err);
-      }
-
       // Fetch local radio tracks
       await fetchLocalRadioTracks();
     };
     fetchData();
   }, [isAdmin]);
-
-  const updateSpotifyRequestStatus = async (id: string, status: string) => {
-    try {
-      await updateDoc(doc(db, 'spotify_requests', id), {
-        status: status
-      });
-      setSpotifyRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
-    } catch (err) {
-      console.error("Error updating spotify request status:", err);
-    }
-  };
 
   const approveTrack = async (id: string) => {
     try {
@@ -165,6 +260,8 @@ const AdminView = () => {
           instagramUrl: artistForm.instagramUrl,
           appleMusicUrl: artistForm.appleMusicUrl,
           isPinned: artistForm.isPinned,
+          isExclusive: artistForm.isExclusive !== false,
+          reels: artistForm.reels || [],
           updatedAt: serverTimestamp()
         });
         alert('¡Perfil del artista actualizado correctamente!');
@@ -184,6 +281,8 @@ const AdminView = () => {
           role: 'artist',
           plan: 'premium',
           isPinned: artistForm.isPinned,
+          isExclusive: artistForm.isExclusive !== false,
+          reels: artistForm.reels || [],
           createdAt: serverTimestamp()
         });
         alert('¡Nuevo artista registrado con éxito!');
@@ -198,8 +297,11 @@ const AdminView = () => {
         spotifyUrl: '',
         instagramUrl: '',
         appleMusicUrl: '',
-        isPinned: false
+        isPinned: false,
+        isExclusive: true,
+        reels: []
       });
+      setAdminFormReelInput('');
       setEditingArtistId(null);
       setShowArtistForm(false);
 
@@ -222,7 +324,9 @@ const AdminView = () => {
       spotifyUrl: artist.spotifyUrl || '',
       instagramUrl: artist.instagramUrl || '',
       appleMusicUrl: artist.appleMusicUrl || '',
-      isPinned: artist.isPinned || false
+      isPinned: artist.isPinned || false,
+      isExclusive: artist.isExclusive !== false,
+      reels: artist.reels || []
     });
     setEditingArtistId(artist.id);
     setShowArtistForm(true);
@@ -481,8 +585,8 @@ const AdminView = () => {
               </div>
 
               <div className="space-y-2 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
-                {localRadioTracks.map((track) => (
-                  <div key={track.fullName} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl text-xs hover:bg-white/5 transition-all">
+                {localRadioTracks.map((track, idx) => (
+                  <div key={track.fullName || track.id || `local-track-${idx}`} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl text-xs hover:bg-white/5 transition-all">
                     <div className="flex items-center gap-3 overflow-hidden">
                       <Music size={14} className="text-brand-yellow flex-shrink-0" />
                       <div className="truncate">
@@ -493,7 +597,7 @@ const AdminView = () => {
                       </div>
                     </div>
                     <button 
-                      onClick={() => handleDeleteLocalRadio(track.fullName)}
+                      onClick={() => handleDeleteLocalRadio(track.fullName || '')}
                       className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0 active:scale-95"
                       title="Eliminar del Servidor"
                     >
@@ -573,17 +677,27 @@ const AdminView = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest">URL Imagen de Perfil (Opcional)</label>
-                <input 
-                  type="text" placeholder="Ej: https://images.unsplash.com/... o /assets/default.png"
-                  className="w-full bg-black/60 border border-white/10 p-3.5 rounded-xl text-xs focus:border-brand-yellow outline-none transition-all font-bold"
-                  value={artistForm.photoURL}
-                  onChange={e => setArtistForm({...artistForm, photoURL: e.target.value})}
-                />
+                <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest text-left block">Imagen de Perfil</label>
+                <div className="flex gap-2 items-center">
+                  <input 
+                    type="text" placeholder="Ej: https://images.unsplash.com/... o sube un archivo"
+                    className="flex-grow bg-black/60 border border-white/10 p-3.5 rounded-xl text-xs focus:border-brand-yellow outline-none transition-all font-bold text-white bg-neutral-900"
+                    value={artistForm.photoURL}
+                    onChange={e => setArtistForm({...artistForm, photoURL: e.target.value})}
+                  />
+                  <label className="px-4 py-3 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-black text-[10px] uppercase rounded-xl cursor-pointer flex items-center gap-1.5 transition-all">
+                    <Upload size={12} />
+                    {uploadingAdminPhoto ? 'SUBIENDO...' : 'SUBIR FOTO'}
+                    <input 
+                      type="file" accept="image/*" className="hidden"
+                      onChange={handleAdminPhotoUpload} disabled={uploadingAdminPhoto}
+                    />
+                  </label>
+                </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Biografía o Slogan</label>
+                <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest text-left block">Biografía o Slogan</label>
                 <textarea 
                   placeholder="Escribe la biografía del artista..." rows={2}
                   className="w-full bg-black/60 border border-white/10 p-3.5 rounded-xl text-xs focus:border-brand-yellow outline-none transition-all font-bold"
@@ -594,7 +708,7 @@ const AdminView = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Spotify URL</label>
+                  <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest text-left block">Spotify URL</label>
                   <input 
                     type="text" placeholder="https://open.spotify.com/artist/..."
                     className="w-full bg-black/60 border border-white/10 p-3 rounded-xl text-[10px] focus:border-brand-yellow outline-none transition-all font-bold"
@@ -603,7 +717,7 @@ const AdminView = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Instagram URL</label>
+                  <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest text-left block">Instagram URL</label>
                   <input 
                     type="text" placeholder="https://instagram.com/..."
                     className="w-full bg-black/60 border border-white/10 p-3 rounded-xl text-[10px] focus:border-brand-yellow outline-none transition-all font-bold"
@@ -612,7 +726,7 @@ const AdminView = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Apple Music URL</label>
+                  <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest text-left block">Apple Music URL</label>
                   <input 
                     type="text" placeholder="https://music.apple.com/..."
                     className="w-full bg-black/60 border border-white/10 p-3 rounded-xl text-[10px] focus:border-brand-yellow outline-none transition-all font-bold"
@@ -622,14 +736,72 @@ const AdminView = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <input 
-                  type="checkbox" id="artist-pin"
-                  className="rounded bg-black border-white/10 text-brand-yellow focus:ring-brand-yellow"
-                  checked={artistForm.isPinned}
-                  onChange={e => setArtistForm({...artistForm, isPinned: e.target.checked})}
-                />
-                <label htmlFor="artist-pin" className="text-[11px] font-black uppercase text-gray-400 cursor-pointer">Fijar artista destacado (PIN)</label>
+              {/* REELS SECTION FOR ADMIN */}
+              <div className="p-4 bg-black/30 border border-white/5 rounded-xl space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-[9px] font-black text-brand-yellow uppercase tracking-widest">REELS / VIDEOCLIPS</label>
+                  <span className="text-[8px] font-mono font-bold text-gray-500">{(artistForm.reels || []).length} CARGADOS</span>
+                </div>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" placeholder="Ej: https://www.youtube.com/shorts/VIDEO_ID"
+                    className="flex-grow bg-black/50 border border-white/10 p-3 rounded-lg text-[10px] focus:border-brand-yellow outline-none transition-all font-bold"
+                    value={adminFormReelInput}
+                    onChange={e => setAdminFormReelInput(e.target.value)}
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      if (adminFormReelInput.trim()) {
+                        const updatedReels = [...(artistForm.reels || []), adminFormReelInput.trim()];
+                        setArtistForm({ ...artistForm, reels: updatedReels });
+                        setAdminFormReelInput('');
+                      }
+                    }}
+                    className="px-4 bg-brand-yellow text-black font-black uppercase text-[10px] rounded-lg hover:scale-[1.01] active:scale-95 transition-all text-center"
+                  >
+                    AGREGAR
+                  </button>
+                </div>
+                <div className="space-y-1 max-h-[100px] overflow-y-auto pr-2 custom-scrollbar text-[10px]">
+                  {(artistForm.reels || []).map((url, i) => (
+                    <div key={i} className="flex justify-between items-center bg-white/[0.01] p-2 rounded border border-white/5 text-[10px]">
+                      <span className="truncate flex-1 font-mono text-gray-400 mr-2">{url}</span>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const updatedReels = (artistForm.reels || []).filter((_, idx) => idx !== i);
+                          setArtistForm({ ...artistForm, reels: updatedReels });
+                        }}
+                        className="text-gray-500 hover:text-red-500 p-1"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-4 pt-1">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" id="artist-pin"
+                    className="rounded bg-black border-white/10 text-brand-yellow focus:ring-brand-yellow"
+                    checked={artistForm.isPinned}
+                    onChange={e => setArtistForm({...artistForm, isPinned: e.target.checked})}
+                  />
+                  <label htmlFor="artist-pin" className="text-[11px] font-black uppercase text-gray-400 cursor-pointer">Fijar destacado (PIN)</label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" id="artist-exclusive"
+                    className="rounded bg-black border-white/10 text-brand-yellow focus:ring-brand-yellow"
+                    checked={artistForm.isExclusive !== false}
+                    onChange={e => setArtistForm({...artistForm, isExclusive: e.target.checked})}
+                  />
+                  <label htmlFor="artist-exclusive" className="text-[11px] font-black uppercase text-gray-400 cursor-pointer">Artista Exclusivo RapLife</label>
+                </div>
               </div>
 
               <div className="flex gap-2 pt-2">
@@ -726,96 +898,6 @@ const AdminView = () => {
               {savingSpotify ? 'GUARDANDO...' : 'ACTUALIZAR SPOTIFY'}
             </button>
          </div>
-      </div>
-
-      {/* PETICIONES DE SPOTIFY DE ARTISTAS */}
-      <div className="bg-brand-dark p-8 rounded-[2.5rem] border-4 border-boombox-gray space-y-8 relative overflow-hidden">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-[#1DB954]/10 rounded-2xl text-[#1DB954]">
-              <Music size={28} />
-            </div>
-            <div>
-              <h2 className="text-3xl font-black italic uppercase tracking-tighter text-white">PEDIDOS DE PLAYLIST SPOTIFY</h2>
-              <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px]">CANCIONES ENVIADAS POR ARTISTAS AL REGISTRARSE</p>
-            </div>
-          </div>
-          <div className="px-4 py-2 bg-[#1DB954]/10 rounded-xl border border-[#1DB954]/25">
-            <span className="text-[#1DB954] font-black italic text-xl">
-              {spotifyRequests.filter(r => r.status === 'pending').length}
-            </span>
-            <span className="text-gray-500 font-black uppercase text-[10px] ml-2">PENDIENTES</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {spotifyRequests.map(req => (
-            <div key={req.id} className={`p-6 rounded-3xl border transition-all ${req.status === 'added' ? 'bg-gradient-to-br from-neutral-900 via-black to-[#1DB954]/5 border-[#1DB954]/20 opacity-80' : 'bg-white/5 border-white/10 hover:border-brand-yellow/30'}`}>
-              <div className="flex items-center justify-between gap-2 mb-4">
-                <div>
-                  <h3 className="font-black italic text-lg uppercase text-white truncate">{req.displayName}</h3>
-                  {req.spotifyUrl ? (
-                    <a 
-                      href={req.spotifyUrl} target="_blank" rel="noopener noreferrer"
-                      className="text-[10px] text-brand-yellow hover:underline flex items-center gap-1 font-bold tracking-tight uppercase"
-                    >
-                      <Link2 size={10} /> VER BIO SPOTIFY
-                    </a>
-                  ) : (
-                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Sin enlace de Spotify</p>
-                  )}
-                </div>
-                <span className={`px-2.5 py-1 rounded-md text-[8px] font-black uppercase tracking-widest ${req.status === 'added' ? 'bg-[#1DB954]/15 text-[#1db954] border border-[#1DB954]/30' : 'bg-brand-yellow/15 text-brand-yellow border border-brand-yellow/30'}`}>
-                  {req.status === 'added' ? 'AÑADIDO ✓' : 'PENDIENTE'}
-                </span>
-              </div>
-
-              <div className="space-y-2 bg-black/40 p-4 rounded-2xl border border-white/5 mb-4">
-                <p className="text-[8.5px] font-black text-gray-500 uppercase tracking-widest">CANCIONES SUGERIDAS:</p>
-                <ol className="list-decimal list-inside text-xs font-bold text-gray-300 space-y-1.5 pt-1 uppercase">
-                  {req.songs && req.songs.map((song: string, idx: number) => (
-                    <li key={idx} className="truncate">
-                      <span className="text-white italic">{song}</span>
-                    </li>
-                  ))}
-                  {(!req.songs || req.songs.length === 0) && (
-                    <li className="text-gray-600 italic">Ninguna canción sugerida</li>
-                  )}
-                </ol>
-              </div>
-
-              {req.status !== 'added' && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => updateSpotifyRequestStatus(req.id, 'added')}
-                    className="flex-grow bg-[#1DB954]/20 text-[#1DB954] border border-[#1DB954]/20 py-2.5 rounded-xl font-black italic uppercase text-[10px] hover:bg-[#1DB954] hover:text-black transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <Check size={14} /> MARCAR COMO AÑADIDO
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm("¿Estás seguro de eliminar esta solicitud de playlist?")) {
-                        deleteDoc(doc(db, 'spotify_requests', req.id));
-                        setSpotifyRequests(prev => prev.filter(r => r.id !== req.id));
-                      }
-                    }}
-                    className="p-2.5 bg-red-500/15 text-red-500 border border-red-500/10 rounded-xl hover:bg-red-500 hover:text-white transition-all"
-                    title="Rechazar petición"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {spotifyRequests.length === 0 && (
-            <div className="col-span-full py-16 bg-white/[0.01] rounded-[2.5rem] border-2 border-dashed border-white/5 flex flex-col items-center justify-center gap-3 text-center text-gray-650">
-              <Music size={40} className="opacity-20" />
-              <p className="font-black italic uppercase tracking-widest text-xs">NO HAY PEDIDOS DE PLAYLIST REGISTRADOS</p>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* TRACK MODERATION SECTION */}

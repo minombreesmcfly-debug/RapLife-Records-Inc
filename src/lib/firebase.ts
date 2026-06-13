@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
-import { getFirestore, initializeFirestore, persistentLocalCache } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import fallbackConfig from '../../firebase-applet-config.json';
 
@@ -22,29 +22,29 @@ export const auth = getAuth(app);
 
 // Use custom db ID if defined, otherwise let Firestore use the default or project's database ID
 const firestoreDbId = (metaEnv.VITE_FIREBASE_FIRESTORE_DATABASE_ID as string) || fallbackConfig.firestoreDatabaseId;
-
-let firestoreInstance;
-try {
-  firestoreInstance = initializeFirestore(app, {
-    localCache: persistentLocalCache({})
-  }, firestoreDbId || undefined);
-} catch (e) {
-  console.warn("Could not initialize firestore with persistent cache, falling back...", e);
-  firestoreInstance = firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestore(app);
-}
-
-export const db = firestoreInstance;
+export const db = getFirestore(app, firestoreDbId);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// Standard Popup Method - Synchronous return to avoid Safari popup blocking
-export const signInWithGoogle = () => {
-  return signInWithPopup(auth, googleProvider);
+// Standard Popup Method
+export const signInWithGoogle = async () => {
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    return result.user;
+  } catch (error) {
+    console.error("Error signing in with Google (Popup)", error);
+    throw error;
+  }
 };
 
-// Redirect Method
-export const signInWithGoogleRedirect = () => {
-  return signInWithRedirect(auth, googleProvider);
+// Redirect Method - Immune to Pop-up Blockers and Third-Party Cookie Restrictions
+export const signInWithGoogleRedirect = async () => {
+  try {
+    await signInWithRedirect(auth, googleProvider);
+  } catch (error) {
+    console.error("Error signing in with Google (Redirect)", error);
+    throw error;
+  }
 };
 
 // Expose getRedirectResult to retrieve credentials after returning from redirect

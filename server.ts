@@ -216,7 +216,17 @@ Output ONLY the JSON array, with no markdown code block wraps.`;
         });
       }
 
-      const promptStr = `You are an expert virtual clothing and outfit stylist. 
+      let promptStr;
+      if (referenceImgCount === 0) {
+        promptStr = `You are an expert virtual avatar clothing stylist. Below is a photograph of a character (the first image).
+Modify this photograph based on the following instructions:
+${outlinesDesc}
+
+CRITICAL STYLING RULES:
+1. Preserve the identity, facial features, hair, poses, and expression of the character in the image as close as possible.
+2. If the instructions specify background properties (like white studio background), camera angles, flash, or outfit styles, apply them while preserving the character's facial and body features.`;
+      } else {
+        promptStr = `You are an expert virtual clothing and outfit stylist. 
 Your task is to modify ONLY the clothing of the specified individuals in the uploaded picture (the FIRST image).
 
 Input image structure:
@@ -227,13 +237,11 @@ MODIFICATIONS TO APPLY:
 ${outlinesDesc}
 
 CRITICAL STYLING RULES:
-1. The result MUST be a high-quality, ultra-realistic real-life photo.
-2. The pose of the character must look confident, bold, and in a "hype beast" aesthetic.
-3. The image must look like it was taken with a camera flash.
-4. If there are accessories on the character (chains, watches, rings, jewelry, glasses, belts), make them look pristine, shiny, and brand new.
-5. Apply the following aesthetic style for the character's clothing: "random outfit style rap, hype beast, alta moda urbana de marca Rap Life Records".
-6. Facial features, mouths, hair, head shapes, hands, and background environment must remain identical and cohesive. Only change the clothing to match the requested style.
-7. Output the newly updated image.`;
+1. Poses, facial features, expressions, eye colors, mouths, hair, head accessories, hands, body proportions, and background environment must remain 100% IDENTICAL and untouched.
+2. Only change the fabrics, styles, colors, and textures of the apparel (shirts, jackets, hoodies, shoes/sneakers, pants, chains, or hats) worn on the bodies.
+3. The newly generated outfits must match the lighting, perspective, shadows, and overall high-quality realistic photo quality.
+4. Output the newly updated image.`;
+      }
 
       parts.push({ text: promptStr });
 
@@ -313,6 +321,10 @@ CRITICAL STYLING RULES:
             .replace(/\s+/g, ' ')
             .trim();
           
+          const fileSizeHuman = statSize > 1024 * 1024 
+            ? `${(statSize / (1024 * 1024)).toFixed(1)} MB`
+            : `${(statSize / 1024).toFixed(1)} KB`;
+
           return {
             id: `local-radio-${i}-${encodeURIComponent(f)}`,
             artistId: 'local-radio-artist',
@@ -321,7 +333,9 @@ CRITICAL STYLING RULES:
             audioUrl: `/assets/radio/${encodeURIComponent(f)}`,
             coverUrl: '/assets/player_idle.png',
             isRadioInterstitial: true,
-            size: statSize
+            size: statSize,
+            fullName: f,
+            fileSizeHuman: fileSizeHuman
           };
         });
 

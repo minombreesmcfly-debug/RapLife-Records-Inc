@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 interface AuthContextType {
@@ -18,34 +18,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (u) => {
+    let unsubscribeProfile: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+      
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
+      }
+
       if (u) {
-        try {
-          const docRef = doc(db, 'users', u.uid);
-          const docSnap = await getDoc(docRef);
+        const docRef = doc(db, 'users', u.uid);
+        unsubscribeProfile = onSnapshot(docRef, (docSnap) => {
           if (docSnap.exists()) {
             setProfile(docSnap.data());
           } else {
-            // If no profile, we might need the user to choose their role
             setProfile(null);
           }
-        } catch (error) {
-          console.error("Error fetching user profile from Firestore:", error);
-          // Set standard profile from user object as fallback if offline or in error condition
-          setProfile({
-            uid: u.uid,
-            displayName: u.displayName || u.email?.split('@')[0] || 'User',
-            email: u.email,
-            role: 'fan',
-            isOffline: true
-          });
-        }
+          setLoading(false);
+        }, (err) => {
+          console.error("AuthContext real-time profile listener error:", err);
+          setProfile(null);
+          setLoading(false);
+        });
       } else {
         setProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+      }
+    };
   }, []);
 
   const isAdmin = 

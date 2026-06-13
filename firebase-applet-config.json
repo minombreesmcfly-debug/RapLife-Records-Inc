@@ -1,10 +1,10 @@
 {
-  "projectId": "raplife",
-  "appId": "1:361546991564:web:d65c58257d294c480bff69",
-  "apiKey": "AIzaSyB_iQyS06Q6sdoiGphZDwArMVM9ZGCiNw0",
-  "authDomain": "raplife.firebaseapp.com",
-  "firestoreDatabaseId": "",
-  "storageBucket": "raplife.firebasestorage.app",
-  "messagingSenderId": "361546991564",
-  "measurementId": "G-26R83W3VQY"
+  "projectId": "gen-lang-client-0386734180",
+  "appId": "1:266034830206:web:e22cfcf72d104460b7312f",
+  "apiKey": "AIzaSyAubmu5SJd_0fm2MsFSfAj2y0GNgho9C2M",
+  "authDomain": "gen-lang-client-0386734180.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-b2a7f95b-b706-4da4-8620-e3bb8f724c31",
+  "storageBucket": "gen-lang-client-0386734180.firebasestorage.app",
+  "messagingSenderId": "266034830206",
+  "measurementId": ""
 }

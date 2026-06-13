@@ -1,8 +1,8 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { MusicProvider, useMusic } from './context/MusicContext';
-import { Home, User, Radio, Gamepad2, Settings, LogIn, LogOut, Mic2, Heart, PlusCircle, ShieldCheck, Play, Pause, Upload, Volume2, VolumeX, Shirt, X, AlertTriangle, ExternalLink, Compass, Monitor, Smartphone } from 'lucide-react';
+import { Home, User, Radio, Gamepad2, Settings, LogIn, LogOut, Mic2, Heart, PlusCircle, ShieldCheck, Play, Upload, Volume2, VolumeX, Shirt, X, AlertTriangle, ExternalLink, Compass, Monitor, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { signInWithGoogle, signInWithGoogleRedirect, getRedirectResultHelper, logoutUser } from './lib/firebase';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -128,8 +128,8 @@ const RadioStrip = () => {
 
 const LandingPage = () => (
   <div className="max-w-6xl mx-auto px-2 md:px-0 pt-4 md:pt-6 space-y-20 md:space-y-32">
-    {/* SPONSOR DE ARTISTAS SLIDES */}
-    <div className="w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw]">
+    {/* PORTADA PRINCIPAL DE ARTISTAS DESTACADOS */}
+    <div className="bg-black/40 border-4 border-boombox-gray rounded-[2.5rem] md:rounded-[3rem] overflow-hidden shadow-2xl relative boombox-texture">
       <SponsoredCarousel />
     </div>
 
@@ -160,46 +160,22 @@ const LandingPage = () => (
 );
 
 const AppContent = () => {
-  const { user, profile, loading, isAdmin } = useAuth();
-  const { currentTrack, isMuted, toggleMute, isPlaying, togglePlay } = useMusic();
+  const { user, profile, isAdmin } = useAuth();
+  const { currentTrack, isMuted, toggleMute } = useMusic();
   const [loginError, setLoginError] = React.useState<any | null>(null);
   const [isLoginPending, setIsLoginPending] = React.useState(false);
   const [showLoginModal, setShowLoginModal] = React.useState(false);
-  
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // Automatic redirect if logged in but no profile exists
-  React.useEffect(() => {
-    if (!loading && user && !profile && location.pathname !== '/profile-setup') {
-      console.log("Logged in but no profile found/completed. Automatically redirecting to Profile Setup onboarding...");
-      navigate('/profile-setup');
-    }
-  }, [user, profile, loading, location.pathname, navigate]);
 
   // Check for redirect sign-in results on app mount
   React.useEffect(() => {
     const checkRedirect = async () => {
       try {
         const result = await getRedirectResultHelper();
-        const wasPending = sessionStorage.getItem('pending_login_redirect');
-
         if (result) {
           console.log("Successfully logged in via redirect! User:", result.user);
-          sessionStorage.removeItem('pending_login_redirect');
-        } else if (wasPending) {
-          console.warn("Redirect callback finished but returned no user credentials. Browser cookie/privacy constraints detected.");
-          sessionStorage.removeItem('pending_login_redirect');
-          
-          // Trigger the diagnostic modal with clean, actionable advice
-          setLoginError({
-            code: 'auth/cookie-or-privacy-block',
-            message: 'Tu navegador móvil (Safari/iOS) o modo privado bloqueó las cookies necesarias para completar el login por redirección. Por favor, intenta de nuevo usando el botón de "Método Popup/Ventana" o desactiva "Prevenir seguimiento entre sitios" en los Ajustes de tu Safari.'
-          });
         }
       } catch (err: any) {
         console.error("Firebase redirect login error on load:", err);
-        sessionStorage.removeItem('pending_login_redirect');
         setLoginError(err);
       }
     };
@@ -210,34 +186,26 @@ const AppContent = () => {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768);
   };
 
-  const handleLoginPopup = () => {
-    setLoginError(null);
-    setIsLoginPending(true);
-    setShowLoginModal(false);
-    signInWithGoogle()
-      .then((result) => {
-        console.log("Logged in via popup:", result.user);
-        setIsLoginPending(false);
-      })
-      .catch((err: any) => {
-        console.error("Firebase Popup Login Error details:", err);
-        setLoginError(err);
-        setIsLoginPending(false);
-      });
-  };
-
-  const handleLoginRedirect = () => {
+  const handleLoginPopup = async () => {
     setLoginError(null);
     setIsLoginPending(true);
     setShowLoginModal(false);
     try {
-      sessionStorage.setItem('pending_login_redirect', 'true');
-      signInWithGoogleRedirect()
-        .catch((err: any) => {
-          console.error("Firebase Redirect Login Error details:", err);
-          setLoginError(err);
-          setIsLoginPending(false);
-        });
+      await signInWithGoogle();
+    } catch (err: any) {
+      console.error("Firebase Popup Login Error details:", err);
+      setLoginError(err);
+    } finally {
+      setIsLoginPending(false);
+    }
+  };
+
+  const handleLoginRedirect = async () => {
+    setLoginError(null);
+    setIsLoginPending(true);
+    setShowLoginModal(false);
+    try {
+      await signInWithGoogleRedirect();
     } catch (err: any) {
       console.error("Firebase Redirect Login Error details:", err);
       setLoginError(err);
@@ -245,33 +213,24 @@ const AppContent = () => {
     }
   };
 
-  const handleDirectLogin = () => {
+  const handleDirectLogin = async () => {
     setLoginError(null);
     setIsLoginPending(true);
     
-    console.log("Attempting direct Google Popup Login first (highly recommended for Safari/iOS)...");
-    signInWithGoogle()
-      .then((result) => {
-        console.log("Popup login success! User:", result.user);
-        setIsLoginPending(false);
-      })
-      .catch((popupErr: any) => {
-        console.warn("Popup blocked or failed, falling back to Redirect login method...", popupErr);
-        try {
-          sessionStorage.setItem('pending_login_redirect', 'true');
-          console.log("Triggering Google login redirection fallback...");
-          signInWithGoogleRedirect()
-            .catch((err: any) => {
-              console.error("Fallback Google redirect login error:", err);
-              setLoginError(err);
-              setIsLoginPending(false);
-            });
-        } catch (err: any) {
-          console.error("Fallback Google redirect login error:", err);
-          setLoginError(err);
-          setIsLoginPending(false);
-        }
-      });
+    try {
+      console.log("Triggering Google login popup...");
+      await signInWithGoogle();
+    } catch (err: any) {
+      console.error("Direct Google popup login error, trying redirect fallback:", err);
+      try {
+        await signInWithGoogleRedirect();
+      } catch (redirErr: any) {
+        console.error("Google redirect fallback also failed:", redirErr);
+        setLoginError(redirErr);
+      }
+    } finally {
+      setIsLoginPending(false);
+    }
   };
 
   return (
@@ -296,53 +255,29 @@ const AppContent = () => {
 
           {/* RIGHT: ACTIONS & LCD STATUS */}
           <div className="flex items-center gap-2 md:gap-4 ml-auto">
-            {/* LCD STATUS DISPLAY WITH BUILT-IN PLAY & SILENCIAR BUTTON */}
-            <div className="lcd-display px-2.5 py-1 md:px-4 md:py-2 rounded-lg border-2 md:border-4 border-black min-w-[160px] sm:min-w-[200px] md:min-w-[260px] flex items-center justify-between gap-1.5 md:gap-2.5 text-left">
+            {/* LCD STATUS DISPLAY WITH BUILT-IN SILENCIAR BUTTON */}
+            <div className="lcd-display px-2.5 py-1 md:px-4 md:py-2 rounded-lg border-2 md:border-4 border-black min-w-[150px] sm:min-w-[190px] md:min-w-[240px] flex items-center justify-between gap-2 text-left">
               <div className="min-w-0 flex-grow">
-                <div className="text-[7.5px] md:text-[9px] opacity-75 font-mono uppercase font-black text-brand-green">FM 108.9 MHz</div>
-                <div className="text-[9px] md:text-xs font-mono truncate uppercase tracking-widest text-brand-yellow font-black mt-0.5">
-                  {currentTrack 
-                    ? (isPlaying ? `📻 SONANDO: ${currentTrack.title}` : `⏸️ PAUSADO: ${currentTrack.title}`) 
-                    : 'STATUS: READY'
-                  }
+                <div className="text-[8px] md:text-[10px] opacity-75 font-mono uppercase font-black text-brand-green">FM 108.9 MHz</div>
+                <div className="text-[10px] md:text-xs font-mono truncate uppercase tracking-widest text-brand-yellow font-black mt-0.5">
+                  {currentTrack ? `PLAYING: ${currentTrack.title}` : 'STATUS: READY'}
                 </div>
               </div>
-              
-              <div className="flex items-center gap-1 shrink-0">
-                {/* PLAY / PAUSE TRIGGER FOR MOBILE AUTOPLAY BYPASS */}
-                <button 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    togglePlay();
-                  }}
-                  className={`flex items-center justify-center p-1 md:p-1.5 rounded-md transition-all cursor-pointer border active:scale-90 ${
-                    isPlaying 
-                      ? 'bg-brand-yellow/10 text-brand-yellow border-brand-yellow/30 hover:bg-brand-yellow/25' 
-                      : 'bg-brand-green text-black border-brand-green hover:bg-brand-green/85 shadow-[0_0_8px_rgba(57,255,20,0.5)] animate-pulse'
-                  }`}
-                  title={isPlaying ? "Pausar Radio" : "Reproducir Radio"}
-                >
-                  {isPlaying ? <Pause size={11} fill="currentColor" /> : <Play size={11} fill="currentColor" />}
-                </button>
-
-                {/* MUTE / UNMUTE */}
-                <button 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    toggleMute();
-                  }}
-                  className={`flex items-center justify-center p-1 md:p-1.5 rounded-md transition-all cursor-pointer border active:scale-90 ${
-                    isMuted 
-                      ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/35 shadow-[0_0_8px_rgba(239,68,68,0.3)]' 
-                      : 'bg-brand-green/20 text-brand-green border-brand-green/30 hover:bg-brand-green/30 shadow-[0_0_8px_rgba(57,255,20,0.2)]'
-                  }`}
-                  title={isMuted ? "Quitar Silencio" : "Silenciar Radio"}
-                >
-                  {isMuted ? <VolumeX size={11} /> : <Volume2 size={11} />}
-                </button>
-              </div>
+              <button 
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleMute();
+                }}
+                className={`flex-shrink-0 flex items-center justify-center p-1 md:p-1.5 rounded-md transition-all cursor-pointer border active:scale-90 ${
+                  isMuted 
+                    ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/35 shadow-[0_0_8px_rgba(239,68,68,0.3)]' 
+                    : 'bg-brand-green/20 text-brand-green border-brand-green/30 hover:bg-brand-green/30 shadow-[0_0_8px_rgba(57,255,20,0.2)]'
+                }`}
+                title={isMuted ? "Quitar Silencio" : "Silenciar Radio"}
+              >
+                {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+              </button>
             </div>
 
             <div className="flex items-center gap-1.5 md:gap-3">
@@ -455,30 +390,7 @@ const AppContent = () => {
               </div>
 
               <div className="space-y-4">
-                {loginError?.code === 'auth/cookie-or-privacy-block' ? (
-                  <>
-                    <p className="text-xs uppercase font-black tracking-wider text-brand-yellow">
-                      🔒 ¡RESTRICCIÓN DE PRIVACIDAD O COOKIES EN TU DISPOSITIVO!
-                    </p>
-                    <div className="space-y-3 text-xs text-gray-300 font-medium leading-relaxed">
-                      <p>
-                        Por seguridad, los navegadores táctiles de Apple (<strong>Safari en iOS</strong>) o pestañas de incógnito bloquean cookies externas, impidiendo que Firebase recuerde tu cuenta al regresar.
-                      </p>
-                      
-                      <div className="bg-black/50 p-4 rounded-2xl border border-brand-yellow/15 space-y-2">
-                        <p className="text-[10px] font-black uppercase text-brand-yellow tracking-wider">
-                          ✔️ LA SOLUCIÓN MÁS VELOZ:
-                        </p>
-                        <p className="text-[10px] text-gray-400">
-                          Haz clic en el botón inferior que dice <strong>"Usar Popup"</strong>. Al hacerlo de este modo, se abrirá un panel directo que inicia sesión inmediatamente sin recargar tu página y sin trabas de cookies.
-                        </p>
-                        <p className="text-[10px] text-gray-400 italic">
-                          Opcional: Ve a <strong>Ajustes &gt; Safari</strong> en tu iPhone y desactiva la casilla <strong>"Prevenir seguimiento entre sitios"</strong> para habilitar la redirección estándar.
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                ) : loginError?.code === 'auth/unauthorized-domain' || (loginError?.message && loginError.message.includes('unauthorized-domain')) ? (
+                {loginError?.code === 'auth/unauthorized-domain' || (loginError?.message && loginError.message.includes('unauthorized-domain')) ? (
                   <>
                     <p className="text-xs uppercase font-black tracking-wider text-brand-yellow">
                       ⚠️ ¡Dominio no autorizado o Configuración incorrecta en Vercel!

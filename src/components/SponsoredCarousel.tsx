@@ -16,37 +16,108 @@ interface SponsoredArtist {
   isPinned?: boolean;
 }
 
-const STATIC_SPONSORS: SponsoredArtist[] = [];
+const STATIC_SPONSORS: SponsoredArtist[] = [
+  {
+    id: 'sponsor_mac_flyer',
+    displayName: 'McFly EmeCe',
+    role: 'artist',
+    category: 'RAP TRAP CONSPIRACIONES',
+    bio: 'Líricas punzantes y bases oscuras cargadas de verdades incómodas, enigmas y teorías de conspiración sobre el asfalto pesado.',
+    photoURL: '/src/assets/images/mcfly_ninja_rapper_1781111492480.png', // Ninja rapero hiperrealista
+    spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
+    instagramUrl: 'https://instagram.com/'
+  },
+  {
+    id: 'sponsor_jason_santana',
+    displayName: 'Jay Santana',
+    role: 'artist',
+    category: 'RAP / REGIONAL MEXICANO TRAP',
+    bio: 'Fusión pionera que une la crudeza del rap de calle con los arreglos profundos y el alma del Regional Mexicano en ritmo Trap.',
+    photoURL: '/src/assets/images/jay_santana_ghetto_1781111479453.png', // Ciudad gueto noche
+    spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
+    instagramUrl: 'https://instagram.com/'
+  },
+  {
+    id: 'sponsor_aitan_blue',
+    displayName: 'Aitana Blue Dream',
+    role: 'artist',
+    category: 'G FUNK / EDM',
+    bio: 'Fusión sublime que une las melodías grooves del G-Funk clásico de West Coast con la vibración electrónica y bailable del EDM moderno.',
+    photoURL: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600&auto=format&fit=crop', // Concierto luces neon
+    spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
+    instagramUrl: 'https://instagram.com/'
+  }
+];
 
 export default function SponsoredCarousel() {
   const [artists, setArtists] = useState<SponsoredArtist[]>(STATIC_SPONSORS);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [autoplay, setAutoplay] = useState(true);
 
-  // Load pinned artists from db to supplement!
+  // Load pinned or exclusive artists from db to supplement!
   useEffect(() => {
     const fetchArtists = async () => {
       try {
         const q = query(
           collection(db, 'users'),
           where('role', '==', 'artist'),
-          where('isPinned', '==', true),
-          limit(3)
+          limit(30)
         );
         const snap = await getDocs(q);
+        const dbArtists: SponsoredArtist[] = [];
+        
         if (!snap.empty) {
-          const dbArtists: SponsoredArtist[] = snap.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as SponsoredArtist));
-          
-          // Combine static sponsors with db artists, preventing duplication
-          const combined = [...STATIC_SPONSORS];
-          dbArtists.forEach(dbArtist => {
-            if (!combined.some(a => a.displayName.toLowerCase() === dbArtist.displayName.toLowerCase())) {
-              combined.push(dbArtist);
-            }
+          snap.docs.forEach(doc => {
+            const data = doc.data();
+            const isPinned = data.isPinned === true;
+            const isExclusive = data.isExclusive !== false; // defaults to true or custom value
+            
+            // Include all fetched artists in the slideshow and format them correctly
+            dbArtists.push({
+              id: doc.id,
+              displayName: data.displayName || 'Artista Sin Nombre',
+              role: data.role || 'artist',
+              category: data.category || (isExclusive ? 'EXCLUSIVO RAPLIFE' : 'DESTACADO RAPLIFE'),
+              bio: data.bio || 'Exclusivo artista independiente asociado al sello discográfico.',
+              photoURL: data.photoURL || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
+              spotifyUrl: data.spotifyUrl || '',
+              instagramUrl: data.instagramUrl || '',
+              isPinned: honorsField(isPinned),
+              isExclusive: isExclusive,
+              createdAt: data.createdAt
+            } as any);
           });
+
+          // Helper to cast boolean
+          function honorsField(val: any) {
+            return typeof val === 'boolean' ? val : !!val;
+          }
+
+          // Sort db artists: 1. Pinned first, 2. Exclusive next, 3. Newer (by createdAt) first
+          dbArtists.sort((a: any, b: any) => {
+            if (a.isPinned !== b.isPinned) {
+              return a.isPinned ? -1 : 1;
+            }
+            if (a.isExclusive !== b.isExclusive) {
+              return a.isExclusive ? -1 : 1;
+            }
+            const timeA = a.createdAt?.seconds || 0;
+            const timeB = b.createdAt?.seconds || 0;
+            return timeB - timeA;
+          });
+          
+          console.log("[CAROUSEL] Successfully loaded database artists:", dbArtists.map(a => a.displayName));
+        }
+
+        // Combine static sponsors with db artists, preventing duplication, BUT put database-sourced ones FIRST so they instantly appear at the start of the slide!
+        const combined: SponsoredArtist[] = [...dbArtists];
+        STATIC_SPONSORS.forEach(staticSponsor => {
+          if (!combined.some(a => a.displayName.toLowerCase() === staticSponsor.displayName.toLowerCase())) {
+            combined.push(staticSponsor);
+          }
+        });
+
+        if (combined.length > 0) {
           setArtists(combined);
         }
       } catch (e) {
@@ -75,9 +146,7 @@ export default function SponsoredCarousel() {
     setCurrentIndex(prev => (prev + 1) % artists.length);
   };
 
-  if (artists.length === 0) return null;
-
-  const activeArtist = artists[currentIndex];
+  const activeArtist = artists[currentIndex] || STATIC_SPONSORS[0];
 
   return (
     <div 

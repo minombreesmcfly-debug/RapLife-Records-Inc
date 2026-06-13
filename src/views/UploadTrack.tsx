@@ -23,14 +23,9 @@ const UploadTrackView = () => {
   React.useEffect(() => {
     const checkCount = async () => {
       if (!user) return;
-      try {
-        const q = query(collection(db, 'tracks'), where('artistId', '==', user.uid));
-        const snap = await getDocs(q);
-        setTrackCount(snap.docs.length);
-      } catch (err) {
-        console.error("Error checking uploaded track count:", err);
-        setTrackCount(0); // Safe fallback
-      }
+      const q = query(collection(db, 'tracks'), where('artistId', '==', user.uid));
+      const snap = await getDocs(q);
+      setTrackCount(snap.docs.length);
     };
     checkCount();
   }, [user]);

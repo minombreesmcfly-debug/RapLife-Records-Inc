@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { db, auth } from '../lib/firebase';
-import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
 import { 
   Upload, Sparkles, RefreshCw, Undo, ArrowLeft, Check, 
   AlertTriangle, Download, Trash2, Image as ImageIcon, 
   Shirt, Eye, Save, User, Info, HelpCircle, ChevronRight, CheckCircle2,
-  Mic, MicOff, Play, Square, Circle, Sliders, Music, Volume2, VolumeX, Disc, HelpCircle as Help
+  Mic, MicOff, Play, Square, Circle, Sliders, Music, Volume2, VolumeX, Disc, HelpCircle as Help,
+  Camera, Video, VideoOff
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -281,6 +282,76 @@ const StudioView = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [loadingStep, setLoadingStep] = useState<string>('');
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [successText, setSuccessText] = useState<string | null>(null);
+
+  // --- WEBCAM CAPTURE STATES & METHODS ---
+  const [webcamActive, setWebcamActive] = useState<boolean>(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const startWebcam = async () => {
+    setErrorText(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 1280, height: 720, facingMode: "user" }, 
+        audio: false 
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      // Save track to a window reference to avoid state lag unmount leaks
+      (window as any)._raplife_webcam_stream = stream;
+    } catch (err: any) {
+      console.error("Error starting webcam:", err);
+      setErrorText("No se pudo acceder a tu cámara web. Por favor asegúrate de otorgar los permisos en tu navegador.");
+      setWebcamActive(false);
+    }
+  };
+
+  const stopWebcam = () => {
+    const stream = (window as any)._raplife_webcam_stream;
+    if (stream) {
+      stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+      (window as any)._raplife_webcam_stream = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Mirror the image horizontally so it behaves like a live selfie mirror
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        setSelfie(dataUrl);
+        setAvatarUrl(null);
+        setSelectedOutfit(null);
+        setErrorText(null);
+        stopWebcam();
+        setWebcamActive(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      // Cleanup any active webcam tracks when the user goes off-screen
+      const stream = (window as any)._raplife_webcam_stream;
+      if (stream) {
+        stream.getTracks().forEach((track: any) => track.stop());
+        (window as any)._raplife_webcam_stream = null;
+      }
+    };
+  }, []);
 
   // --- VOCAL STUDIO NEW STATES & TUNINGS ---
   const [activeTab, setActiveTab] = useState<'vocal' | 'avatar'>('vocal');
@@ -380,15 +451,41 @@ const StudioView = () => {
     if (!user) return;
     setLoading(true);
     setLoadingStep('Activando tu perfil en el ecosistema digital de RapLife...');
+    setErrorText(null);
+    setSuccessText(null);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        acceptedEcosystem: true,
-        updatedAt: serverTimestamp()
-      });
+      const docRef = doc(db, 'users', user.uid);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        await updateDoc(docRef, {
+          acceptedEcosystem: true,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        await setDoc(docRef, {
+          uid: user.uid,
+          email: user.email || '',
+          displayName: user.displayName || 'RapLife Member',
+          photoURL: user.photoURL || '',
+          role: 'fan',
+          category: 'OYENTE ACTIVO',
+          plan: 'fan',
+          points: 0,
+          isPinned: false,
+          bio: '',
+          acceptedEcosystem: true,
+          avatarSelfieUrl: '',
+          avatarUrl: '',
+          hasAvatar: false,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
       setAccepted(true);
     } catch (err: any) {
       console.error(err);
-      alert('Error activando ecosistema: ' + err.message);
+      setErrorText('Error activando ecosistema: ' + err.message);
     } finally {
       setLoading(false);
       setLoadingStep('');
@@ -398,9 +495,11 @@ const StudioView = () => {
   // Process selfie file upload in workarea
   const handleSelfieSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setErrorText(null);
+    setSuccessText(null);
     if (file) {
       if (!file.type.startsWith('image/')) {
-        alert('Por favor selecciona un archivo de imagen válido.');
+        setErrorText('Por favor selecciona un archivo de imagen válido.');
         return;
       }
       const reader = new FileReader();
@@ -416,12 +515,16 @@ const StudioView = () => {
 
   // Run AI Outfit Try-On
   const handleApplyTryon = async () => {
+    setErrorText(null);
+    setSuccessText(null);
     if (!selfie) {
-      alert('Primero debes subir tu selfie o foto real.');
+      setErrorText('Primero debes subir tu selfie o foto real.');
       return;
     }
-    if (!selectedOutfit) {
-      alert('Selecciona un outfit pre-diseñado para aplicártelo.');
+    
+    const attemptsUsed = profile?.avatarAttempts || 0;
+    if (attemptsUsed >= 3) {
+      setErrorText('¡Límite alcanzado! Has agotado tus 3 intentos permitidos para generar tu Avatar IA.');
       return;
     }
 
@@ -430,10 +533,19 @@ const StudioView = () => {
     setErrorText(null);
 
     try {
-      // 1. Intentamos cargar la imagen real del outfit si está subida, para mandarla como referencia multimodal
-      const localOutfitPath = `/assets/outfits/${selectedOutfit.filename}`;
-      let clothesBase64 = await getBase64FromUrl(localOutfitPath);
+      let clothesBase64 = null;
       let clothesMime = 'image/png';
+      let outfitDesc = '';
+
+      if (selectedOutfit) {
+        // 1. Intentamos cargar la imagen real del outfit si está subida, para mandarla como referencia multimodal
+        const localOutfitPath = `/assets/outfits/${selectedOutfit.filename}`;
+        clothesBase64 = await getBase64FromUrl(localOutfitPath);
+        outfitDesc = selectedOutfit.description;
+      } else {
+        // Generación en base al prompt solicitado si no se seleccionó outfit pre-diseñado por defecto
+        outfitDesc = `make a photo of this character keep accesories if has any , make the character wear a y2k hip hop outfit brand "RapLife Records" , white studio background , frontal photo with flash , upper body and face angle frontal`;
+      }
 
       // 2. Armar la petición para el endpoint
       const payload = {
@@ -445,7 +557,7 @@ const StudioView = () => {
             label: 'Mi Foto',
             description: 'La persona en primer o medio plano a la que se le debe cambiar la ropa de forma idéntica.',
             originalOutfit: 'Ropa original',
-            newOutfit: selectedOutfit.description,
+            newOutfit: outfitDesc,
             ...(clothesBase64 ? { clothesImage: clothesBase64, clothesImageMime: clothesMime } : {})
           }
         ]
@@ -469,6 +581,15 @@ const StudioView = () => {
       if (responseData.image) {
         setAvatarUrl(responseData.image);
         setIsOutfitModified(true);
+        
+        // Incrementar el contador de intentos en Firestore
+        if (user) {
+          const docRef = doc(db, 'users', user.uid);
+          await updateDoc(docRef, {
+            avatarAttempts: attemptsUsed + 1,
+            updatedAt: serverTimestamp()
+          });
+        }
       } else {
         throw new Error('El servidor de Inteligencia Artificial no devolvió el archivo final.');
       }
@@ -486,19 +607,45 @@ const StudioView = () => {
     if (!user) return;
     setLoading(true);
     setLoadingStep('Guardando la configuración oficial de tu Avatar RapLife en la nube...');
+    setErrorText(null);
+    setSuccessText(null);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      const docRef = doc(db, 'users', user.uid);
+      const docSnap = await getDoc(docRef);
+      
+      const avatarData = {
         avatarUrl: avatarUrl || selfie, // Si no aplicó IA todavía, guarda su selfie base
         avatarSelfieUrl: selfie,
         acceptedEcosystem: true,
         hasAvatar: true,
         updatedAt: serverTimestamp()
-      });
+      };
+
+      if (docSnap.exists()) {
+        await updateDoc(docRef, avatarData);
+      } else {
+        await setDoc(docRef, {
+          uid: user.uid,
+          email: user.email || '',
+          displayName: user.displayName || 'RapLife Member',
+          photoURL: user.photoURL || '',
+          role: 'fan',
+          category: 'OYENTE ACTIVO',
+          plan: 'fan',
+          points: 0,
+          isPinned: false,
+          bio: '',
+          ...avatarData,
+          createdAt: serverTimestamp()
+        });
+      }
+
       setIsOutfitModified(false);
-      alert('¡Excelente! Tu Avatar RapLife se ha guardado de manera oficial. Ahora formas parte de nuestra red de artistas digitales.');
+      setSuccessText('¡Excelente! Tu Avatar RapLife se ha guardado de manera oficial. Ahora formas parte de nuestra red de artistas digitales.');
+      setTimeout(() => setSuccessText(null), 8000);
     } catch (err: any) {
       console.error(err);
-      alert('Error guardando avatar: ' + err.message);
+      setErrorText('Error guardando avatar: ' + err.message);
     } finally {
       setLoading(false);
       setLoadingStep('');
@@ -506,13 +653,41 @@ const StudioView = () => {
   };
 
   // Clean / reset photo workspace
-  const handleResetWorkspace = () => {
-    if (window.confirm('¿Quieres cambiar tu foto base y limpiar tu lienzo de diseño?')) {
-      setSelfie(null);
-      setAvatarUrl(null);
-      setSelectedOutfit(null);
-      setErrorText(null);
-      setIsOutfitModified(false);
+  const handleResetWorkspace = async () => {
+    if (window.confirm('¿Quieres cambiar tu foto base y limpiar tu lienzo de diseño? Se eliminará de la base de datos para que puedas subir una nueva.')) {
+      if (user) {
+        setLoading(true);
+        setLoadingStep('Eliminando tu avatar anterior de la nube...');
+        try {
+          const docRef = doc(db, 'users', user.uid);
+          await updateDoc(docRef, {
+            avatarSelfieUrl: '',
+            avatarUrl: '',
+            hasAvatar: false,
+            updatedAt: serverTimestamp()
+          });
+          
+          setSelfie(null);
+          setAvatarUrl(null);
+          setSelectedOutfit(null);
+          setErrorText(null);
+          setIsOutfitModified(false);
+          setSuccessText('¡Se ha eliminado la foto anterior! Ahora puedes subir un nuevo lienzo.');
+          setTimeout(() => setSuccessText(null), 3000);
+        } catch (e: any) {
+          console.error("Error clearing avatar from db:", e);
+          setErrorText("Ocurrió un error al limpiar en la base de datos: " + e.message);
+        } finally {
+          setLoading(false);
+          setLoadingStep('');
+        }
+      } else {
+        setSelfie(null);
+        setAvatarUrl(null);
+        setSelectedOutfit(null);
+        setErrorText(null);
+        setIsOutfitModified(false);
+      }
     }
   };
 
@@ -585,6 +760,13 @@ const StudioView = () => {
               </ul>
             </div>
 
+            {errorText && (
+              <div className="p-4 bg-red-500/15 border border-red-500/25 text-red-400 rounded-2xl flex flex-col gap-1 text-center font-bold text-xs uppercase tracking-wider animate-pulse">
+                <AlertTriangle size={16} className="mx-auto text-red-500" />
+                <span>{errorText}</span>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-2">
               <button
                 onClick={handleDeclineEcosystem}
@@ -649,27 +831,100 @@ const StudioView = () => {
 
             {/* DYNAMIC RETOUCH CANVAS */}
             {!selfie ? (
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                className="border-4 border-dashed rounded-2xl p-12 flex flex-col items-center justify-center text-center cursor-pointer min-h-[350px] transition-all bg-white/[0.01] hover:bg-white/[0.03] border-white/10 hover:border-brand-yellow/40 group"
-              >
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  accept="image/*" 
-                  className="hidden" 
-                  onChange={handleSelfieSelect} 
-                />
-                
-                <div className="p-4 bg-white/5 rounded-full text-brand-yellow mb-4 group-hover:scale-110 transition-transform">
-                  <Upload size={32} />
+              <div className="space-y-4">
+                {/* MODE CHANGER TABS */}
+                <div className="grid grid-cols-2 gap-2 bg-black/40 p-1.5 rounded-xl border border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopWebcam();
+                      setWebcamActive(false);
+                    }}
+                    className={`py-2 px-3 rounded-lg font-black uppercase text-[10px] italic tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      !webcamActive 
+                        ? 'bg-brand-yellow text-black shadow-glow' 
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <Upload size={12} /> SUBIR FOTO LOCAL
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWebcamActive(true);
+                      startWebcam();
+                    }}
+                    className={`py-2 px-3 rounded-lg font-black uppercase text-[10px] italic tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      webcamActive 
+                        ? 'bg-brand-yellow text-black shadow-glow' 
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <Video size={12} /> ENTRADA CÁMARA (PLAY VIDEO)
+                  </button>
                 </div>
-                
-                <h3 className="text-lg font-black italic uppercase tracking-tighter text-white">SUBE TU FOTO O SELFI REAL</h3>
-                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-1 max-w-sm">
-                  Haz clic o arrastra una selfie para usar de modelo. Funciona mejor con tomas de frente en iluminación estándar.
-                </p>
-                <p className="text-[9px] text-[#444] font-black uppercase tracking-widest mt-6">JPG / PNG / WEBP / HEIC</p>
+
+                {!webcamActive ? (
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-4 border-dashed rounded-2xl p-12 flex flex-col items-center justify-center text-center cursor-pointer min-h-[350px] transition-all bg-white/[0.01] hover:bg-white/[0.03] border-white/10 hover:border-brand-yellow/40 group relative"
+                  >
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={handleSelfieSelect} 
+                    />
+                    
+                    <div className="p-4 bg-white/5 rounded-full text-brand-yellow mb-4 group-hover:scale-110 transition-transform">
+                      <Upload size={32} />
+                    </div>
+                    
+                    <h3 className="text-lg font-black italic uppercase tracking-tighter text-white">SUBE TU FOTO O SELFI REAL</h3>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-1 max-w-sm">
+                      Haz clic o arrastra una selfie para usar de modelo. Funciona mejor con tomas de frente en iluminación estándar.
+                    </p>
+                    <p className="text-[9px] text-[#444] font-black uppercase tracking-widest mt-6">JPG / PNG / WEBP / HEIC</p>
+                  </div>
+                ) : (
+                  <div className="border-4 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center min-h-[350px] transition-all bg-black/60 border-white/10 relative overflow-hidden">
+                    <video 
+                      ref={videoRef}
+                      autoPlay 
+                      playsInline 
+                      muted 
+                      className="w-full max-h-[320px] object-cover rounded-xl border border-white/10 scale-x-[-1] bg-neutral-950 shadow-inner"
+                    />
+                    
+                    {/* Floating HUD over video preview */}
+                    <div className="absolute top-6 right-6">
+                      <span className="bg-red-500 text-white font-black uppercase text-[8px] px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1.5 border border-red-600">
+                        <div className="w-1.5 h-1.5 bg-white rounded-full" /> LIVE STREAM
+                      </span>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2.5 w-full justify-center">
+                      <button
+                        type="button"
+                        onClick={capturePhoto}
+                        className="px-6 py-3 bg-brand-yellow text-black font-black uppercase text-[11px] rounded-xl flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all shadow-glow cursor-pointer"
+                      >
+                        <Camera size={14} /> CAPTURAR MI SELFI (GENERAR)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          stopWebcam();
+                          setWebcamActive(false);
+                        }}
+                        className="px-4 py-3 bg-[#222] text-white hover:text-red-400 font-black uppercase text-[11px] rounded-xl flex items-center gap-1.5 hover:bg-[#333] transition-all cursor-pointer"
+                      >
+                        <VideoOff size={14} /> DETENER CÁMARA
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-4">
@@ -881,18 +1136,40 @@ const StudioView = () => {
                 </p>
               </motion.div>
             ) : (
-              <div className="bg-black/20 p-4 border border-dashed border-white/5 text-center text-[10px] text-gray-600 font-bold uppercase tracking-widest rounded-2xl">
-                Selecciona una opción de vestuario de arriba para probártela
+              <div className="bg-brand-yellow/5 p-4 border border-brand-yellow/10 text-center text-[10px] font-bold uppercase tracking-wide rounded-2xl text-gray-400">
+                <span className="text-brand-yellow">✨ OUTFIT Y2K POR DEFECTO ACTIVADO:</span> Se generará una versión digital de tu vestuario con estilo Y2K Hip-Hop RapLife, manteniendo tus accesorios.
               </div>
             )}
+
+            {/* ATTEMPTS STATUS */}
+            <div className="flex justify-between items-center bg-black/40 border border-white/5 p-3 rounded-xl text-xs">
+              <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Intentos de generación de Avatar IA:</span>
+              <span className={`font-black italic px-2.5 py-1 rounded text-[11px] ${
+                (profile?.avatarAttempts || 0) >= 3 
+                  ? 'bg-red-500/20 text-red-400' 
+                  : (profile?.avatarAttempts || 0) === 2 
+                    ? 'bg-brand-yellow/20 text-brand-yellow' 
+                    : 'bg-green-500/20 text-green-400'
+              }`}>
+                {Math.max(0, 3 - (profile?.avatarAttempts || 0))} / 3 restantes
+              </span>
+            </div>
 
             {/* ACTIVATE TryOn BUTTON */}
             <button
               onClick={handleApplyTryon}
-              disabled={loading || !selfie || !selectedOutfit}
+              disabled={loading || !selfie || (profile?.avatarAttempts || 0) >= 3}
               className="w-full py-4 bg-brand-yellow text-black font-black italic uppercase tracking-tight text-xs rounded-xl shadow-glow hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-25 disabled:pointer-events-none cursor-pointer flex items-center justify-center gap-2"
             >
-              <Sparkles size={16} /> {loading ? 'SINTONIZANDO VESTUARIO IA...' : 'APLICAR VESTUARIO CON IA'}
+              <Sparkles size={16} /> 
+              {loading 
+                ? 'SINTONIZANDO VESTUARIO IA...' 
+                : (profile?.avatarAttempts || 0) >= 3 
+                  ? 'SIN INTENTOS RESTANTES' 
+                  : selectedOutfit 
+                    ? 'APLICAR VESTUARIO CON IA' 
+                    : 'GENERAR RAPLIFE OUTFIT IA'
+              }
             </button>
 
             {/* ERROR LOGS */}
@@ -913,6 +1190,19 @@ const StudioView = () => {
                     </p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* SUCCESS LOGS */}
+            {successText && (
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex flex-col gap-2 text-xs">
+                <div className="flex gap-2 font-bold uppercase tracking-wider">
+                  <CheckCircle2 className="shrink-0 text-emerald-400" size={16} />
+                  <span>PROCESO COMPLETADO</span>
+                </div>
+                <p className="text-[10px] leading-relaxed uppercase text-gray-300 font-bold">
+                  {successText}
+                </p>
               </div>
             )}
 

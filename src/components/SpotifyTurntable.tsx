@@ -204,10 +204,6 @@ export default function SpotifyTurntable() {
 
   // --- INTERACTIVE ANNOTATED EXPLANATION OVERLAY STATE ---
   const [overlayDismissed, setOverlayDismissed] = useState(() => {
-    // Automatically force bypass/dismiss on mobile viewports to prevent clutter and blur
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      return true;
-    }
     return localStorage.getItem('raplife_vocal_tutorial_viewed') === 'true';
   });
 
@@ -1512,7 +1508,7 @@ export default function SpotifyTurntable() {
                   <div className="w-full max-w-xl relative h-full flex flex-col justify-between py-2 text-brand-yellow font-handwritten">
                     
                     {/* Annotation Top Right pointing to LCD */}
-                    <div className="hidden md:block absolute top-[8%] right-[2%] text-right max-w-[190px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
+                    <div className="absolute top-[8%] right-[2%] text-right max-w-[190px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
                       <p className="text-sm md:text-base leading-tight font-bold">
                         🎼 EL TONO CORRECTO
                       </p>
@@ -1525,7 +1521,7 @@ export default function SpotifyTurntable() {
                     </div>
 
                     {/* Annotation Mid Left pointing to AutoTune speed */}
-                    <div className="hidden md:block absolute top-[35%] left-[1%] text-left max-w-[195px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
+                    <div className="absolute top-[35%] left-[1%] text-left max-w-[195px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
                       <p className="text-sm md:text-base leading-tight font-bold">
                         🤖 EFECTO T-PAIN PRO
                       </p>
@@ -1535,12 +1531,12 @@ export default function SpotifyTurntable() {
                     </div>
 
                     {/* Annotation Mid Right pointing to FX controllers */}
-                    <div className="hidden md:block absolute top-[38%] right-[1%] text-right max-w-[180px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
+                    <div className="absolute top-[38%] right-[1%] text-right max-w-[180px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
                       <p className="text-sm md:text-base leading-tight font-bold">
                         🎚️ MIX ANALÓGICO
                       </p>
-                      <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
-                        Ajusta volúmenes y ecualizaciones para una captación impecable.
+                      <p className="text-xs md:text-sm text-gray-300 leading-snug mt-0.5">
+                        Satura tu voz con distorsiones, añade eco metálico y reverbs espaciales para grabaciones gordas.
                       </p>
                     </div>
 
@@ -1567,7 +1563,7 @@ export default function SpotifyTurntable() {
                     </div>
 
                     {/* Annotation Bottom Left pointing to micro toggle */}
-                    <div className="hidden md:block absolute bottom-[2%] left-[2%] text-left max-w-[190px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
+                    <div className="absolute bottom-[2%] left-[2%] text-left max-w-[190px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
                       <p className="text-sm md:text-base leading-tight font-bold">
                         🎙️ ACTIVA SU MICRO
                       </p>

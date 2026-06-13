@@ -169,55 +169,24 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             audioRef.current.src = initial.audioUrl;
             audioRef.current.autoplay = true;
             
-            // Set initial low volume and start muted to pass strict browser autoplay policies
-            audioRef.current.muted = true;
-            setIsMuted(true);
-            
             // Try autoplay right away
             const promise = audioRef.current.play();
             if (promise !== undefined) {
               playPromiseRef.current = promise;
               promise.then(() => {
                 setIsPlaying(true);
-                
-                // Automatically UNMUTE on first user interaction after playback started
-                const unmuteOnInteraction = () => {
-                  if (audioRef.current) {
-                    audioRef.current.muted = false;
-                    setIsMuted(false);
-                    audioRef.current.volume = 0.6;
-                    setVolumeState(0.6);
-                  }
-                  cleanupUnmute();
-                };
-                
-                const cleanupUnmute = () => {
-                  window.removeEventListener('click', unmuteOnInteraction);
-                  window.removeEventListener('touchstart', unmuteOnInteraction);
-                  window.removeEventListener('keydown', unmuteOnInteraction);
-                  window.removeEventListener('scroll', unmuteOnInteraction);
-                };
-                
-                window.addEventListener('click', unmuteOnInteraction);
-                window.addEventListener('touchstart', unmuteOnInteraction);
-                window.addEventListener('keydown', unmuteOnInteraction);
-                window.addEventListener('scroll', unmuteOnInteraction);
               }).catch(err => {
-                console.warn("[RADIO] Autoplay blocked even when muted, wait for interaction:", err);
+                console.warn("[RADIO] Autoplay blocked, wait for user interaction helper:", err);
                 
-                // Play and unmute as soon as user interacts anywhere (fallback)
+                // Play as soon as user interacts anywhere to bypass Google/Apple autoplay block
                 const startPlayOnFirstInteraction = () => {
                   if (audioRef.current) {
-                    audioRef.current.muted = false;
-                    setIsMuted(false);
-                    audioRef.current.volume = 0.6;
-                    setVolumeState(0.6);
                     audioRef.current.play()
                       .then(() => {
                         setIsPlaying(true);
                         cleanup();
                       })
-                      .catch(e => console.warn("[RADIO] Play failed on interaction:", e));
+                      .catch(e => console.warn("[RADIO] Still blocked on interaction:", e));
                   }
                 };
                 

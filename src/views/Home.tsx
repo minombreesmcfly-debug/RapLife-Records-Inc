@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
-import { collection, query, where, getDocs, orderBy, limit, addDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { 
   Flame, Star, TrendingUp, Music, Play, ExternalLink, Radio, 
@@ -11,6 +11,7 @@ import {
 import { Link } from 'react-router-dom';
 import { useMusic } from '../context/MusicContext';
 import ElfsightTikTok from '../components/ElfsightTikTok';
+import SponsoredCarousel from '../components/SponsoredCarousel';
 
 // Formato de Servicios Promocionales
 const PROM_SERVICES = [
@@ -53,7 +54,6 @@ const HomeView = () => {
   const { play } = useMusic();
   const [pinnedArtists, setPinnedArtists] = useState<any[]>([]);
   const [recentTracks, setRecentTracks] = useState<any[]>([]);
-  const [spotifyPlaylistId, setSpotifyPlaylistId] = useState('');
 
   // Promo selector
   const [activePromTab, setActivePromTab] = useState(0);
@@ -76,32 +76,18 @@ const HomeView = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      // Fetch Pinned Artists
       try {
-        const qPinned = query(collection(db, 'users'), where('role', '==', 'artist'), where('isPinned', '==', true), limit(6));
+        // Fetch Exclusive Registered Artists
+        const qPinned = query(collection(db, 'users'), where('role', '==', 'artist'), limit(12));
         const snapPinned = await getDocs(qPinned);
         setPinnedArtists(snapPinned.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (e) {
-        console.error("Error fetching pinned artists on home view:", e);
-      }
 
-      // Fetch Recent Tracks
-      try {
+        // Fetch Recent Tracks
         const qTracks = query(collection(db, 'tracks'), where('isRadioInterstitial', '==', false), orderBy('createdAt', 'desc'), limit(10));
         const snapTracks = await getDocs(qTracks);
         setRecentTracks(snapTracks.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (e) {
-        console.error("Error fetching recent tracks on home view:", e);
-      }
-
-      // Fetch Spotify Playlist config
-      try {
-        const snapSpotify = await getDoc(doc(db, 'config', 'spotify'));
-        if (snapSpotify.exists()) {
-          setSpotifyPlaylistId(snapSpotify.data().playlistId || '');
-        }
-      } catch (err) {
-        console.error("Error fetching spotify playlist config on home view:", err);
+        console.error("Error fetching home data:", e);
       }
     };
     fetchData();
@@ -151,47 +137,12 @@ const HomeView = () => {
       exit={{ opacity: 0 }}
       className="p-4 md:p-10 space-y-16 max-w-7xl mx-auto"
     >
-      {/* Official Artist Spotify Playlist additions tracker */}
-      {profile?.role === 'artist' && (
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-brand-yellow/15 via-black to-neutral-900 border-2 border-brand-yellow/35 p-6 md:p-8 rounded-[2rem] relative overflow-hidden shadow-glow space-y-4 text-left"
-        >
-          <div className="absolute right-0 top-0 w-64 h-64 bg-brand-yellow/5 rounded-full blur-3xl pointer-events-none" />
-          <div className="flex items-center gap-3">
-            <Sparkles size={24} className="text-brand-yellow animate-pulse" />
-            <h3 className="text-xl md:text-2xl font-black italic uppercase tracking-tighter text-white">PLAYLIST OFICIAL RAPLIFE RECODS</h3>
-          </div>
-          <p className="text-xs md:text-sm text-gray-200 uppercase font-black tracking-tight max-w-4xl leading-relaxed">
-            "Las canciones que enviaste serán agregadas en un plazo de 24 a 48 horas a nuestra lista oficial de reproducción de <span className="text-brand-yellow">RapLife Records</span> en Spotify. No olvides compartir. Estamos creciendo juntos con este movimiento. Gracias por ser parte de esto."
-          </p>
-          
-          {spotifyPlaylistId && (
-            <div className="flex flex-wrap items-center gap-4 pt-2">
-              <a 
-                href={`https://open.spotify.com/playlist/${spotifyPlaylistId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-5 py-3 bg-[#1DB954] hover:bg-[#1ed760] text-black font-black uppercase text-xs tracking-wider rounded-xl flex items-center gap-2 shadow-glow transition-all active:scale-95"
-              >
-                <Music size={14} fill="currentColor" />
-                COMPARTIR PLAYLIST DE SPOTIFY
-              </a>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                🔥 ¡MANTENTE ACTIVO EN NUESTRO REPRODUCTOR GLOBAL Y ROMPE LAS CALLES!
-              </p>
-            </div>
-          )}
-        </motion.div>
-      )}
-
-      {/* Pinned Artists (Top Talents banner grid) */}
+      {/* Exclusive Artists Grid */}
       <section id="top-artists-section">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <div className="w-2 h-8 bg-brand-yellow" />
-            <h2 className="text-3xl font-black italic tracking-tighter uppercase underline decoration-brand-yellow/30 decoration-4 underline-offset-8">TOP ARTISTAS</h2>
+            <h2 className="text-3xl font-black italic tracking-tighter uppercase underline decoration-brand-yellow/30 decoration-4 underline-offset-8">ARTISTAS EXCLUSIVOS</h2>
           </div>
           <Link to="/artists" className="text-xs font-bold text-gray-500 hover:text-brand-yellow transition-colors tracking-widest uppercase">VER TODOS +</Link>
         </div>
@@ -202,6 +153,16 @@ const HomeView = () => {
               <div className="relative aspect-square rounded-2xl overflow-hidden mb-3 border-2 border-transparent group-hover:border-brand-yellow transition-all shadow-lg group-hover:shadow-[0_0_20px_rgba(248,251,2,0.3)]">
                 <img referrerPolicy="no-referrer" src={artist.photoURL || 'https://images.unsplash.com/photo-1601643143482-96cb344070fb?q=80&w=400&auto=format&fit=crop'} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 scale-110 group-hover:scale-100" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60" />
+                {artist.reels && artist.reels.length > 0 && (
+                  <span className="absolute top-2 right-2 bg-brand-yellow text-black text-[7px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
+                    ⚡ REELS
+                  </span>
+                )}
+                {artist.isExclusive !== false && (
+                  <span className="absolute bottom-2 left-2 bg-black/60 text-brand-green border border-brand-green/25 text-[7px] font-mono px-2 py-0.5 rounded uppercase font-bold">
+                    EXCLUSIVE
+                  </span>
+                )}
               </div>
               <h3 className="text-sm font-black italic uppercase text-center group-hover:text-brand-yellow truncate">{artist.displayName}</h3>
             </Link>
