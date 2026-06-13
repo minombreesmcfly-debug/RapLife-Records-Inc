@@ -21,41 +21,100 @@ import StudioView from './views/Studio';
 import SponsoredCarousel from './components/SponsoredCarousel';
 
 const PlayerBar = () => {
-  const { currentTrack, isPlaying, togglePlay, nextTrack } = useMusic();
+  const { currentTrack, isPlaying, togglePlay, nextTrack, currentTime, duration, seek } = useMusic();
   
   if (!currentTrack) return null;
+
+  const formatTime = (seconds: number) => {
+    if (isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    seek(time);
+  };
 
   return (
     <div className="fixed bottom-16 md:bottom-0 left-0 right-0 h-20 md:h-24 bg-boombox-gray border-t-4 md:border-t-8 border-black flex items-center px-4 md:px-10 z-[200] boombox-texture shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
       <div className="flex items-center gap-3 md:gap-4 w-1/3 md:w-1/4">
         <div className="w-12 h-12 md:w-14 md:h-14 bg-brand-dark rounded-xl overflow-hidden border-2 md:border-4 border-black speaker-grill flex-shrink-0 relative group">
-           {currentTrack.coverUrl && <img src={currentTrack.coverUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />}
+           {currentTrack.coverUrl && <img src={currentTrack.coverUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform" referrerPolicy="no-referrer" />}
            <div className="absolute inset-0 bg-brand-yellow/10 animate-pulse-slow pointer-events-none" />
         </div>
         <div className="hidden sm:block min-w-0">
-          <h4 className="font-black italic uppercase text-brand-yellow truncate tracking-tight text-xs md:text-sm leading-none mb-1">{currentTrack.title}</h4>
+          <h4 className="font-black italic uppercase text-brand-yellow truncate tracking-tight text-xs md:text-sm leading-none mb-1" title={currentTrack.title}>{currentTrack.title}</h4>
           <p className="text-[9px] font-bold text-white/40 uppercase tracking-[0.1em] truncate">{currentTrack.artistName}</p>
         </div>
       </div>
 
-      <div className="flex flex-col items-center gap-1 md:gap-2 flex-grow">
-        <div className="flex items-center gap-4 md:gap-12">
-          <button className="chrome-button p-1.5 rounded-full hidden md:block" title="REW"><div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[8px] border-r-black ml-[-1px]" /></button>
-          <button onClick={togglePlay} className="w-12 h-12 md:w-14 md:h-14 chrome-button rounded-full flex items-center justify-center hover:scale-110 shadow-lg group">
-             {isPlaying ? <div className="w-5 h-5 bg-black" /> : <Play className="ml-1 text-black" size={24} fill="black" />}
+      <div className="flex flex-col items-center gap-1.5 md:gap-2 flex-grow justify-center">
+        {/* Playback Controls button cluster */}
+        <div className="flex items-center gap-3 md:gap-8">
+          <button 
+            onClick={() => seek(currentTime - 10)} 
+            className="chrome-button p-1 min-w-[36px] h-7 rounded-lg flex items-center justify-center bg-black hover:scale-105 active:scale-95 transition-all text-[9.5px] font-mono font-black text-white/60 hover:text-white cursor-pointer select-none"
+            title="Atrás 10 segundos"
+          >
+            -10s
           </button>
-          <button onClick={nextTrack} className="chrome-button p-1.5 rounded-full" title="FFW"><div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[8px] border-l-black mr-[-1px]" /></button>
+
+          <button 
+            onClick={togglePlay} 
+            className="w-10 h-10 md:w-12 md:h-12 chrome-button rounded-full flex items-center justify-center hover:scale-110 active:scale-95 shadow-lg group select-none cursor-pointer"
+            title={isPlaying ? "Pausar Radio" : "Iniciar Radio"}
+          >
+             {isPlaying ? <div className="w-4 h-4 bg-black rounded-sm" /> : <Play className="ml-1 text-black" size={20} fill="black" />}
+          </button>
+
+          <button 
+            onClick={() => seek(currentTime + 15)} 
+            className="chrome-button p-1 min-w-[36px] h-7 rounded-lg flex items-center justify-center bg-black hover:scale-105 active:scale-95 transition-all text-[9.5px] font-mono font-black text-brand-yellow cursor-pointer select-none"
+            title="Adelantar 15 segundos"
+          >
+            +15s
+          </button>
+
+          <button 
+            onClick={nextTrack} 
+            className="chrome-button p-1.5 rounded-lg flex items-center justify-center bg-black hover:scale-105 active:scale-95 transition-all cursor-pointer select-none" 
+            title="Siguiente canción (Saltar)"
+          >
+            <div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[8px] border-l-black mr-[-1px]" style={{ borderLeftColor: 'black' }} />
+          </button>
         </div>
-        <div className="w-full max-w-[120px] sm:max-w-xs md:max-w-md h-2 md:h-3 bg-black rounded-full p-0.5 border border-white/5 overflow-hidden shadow-inner">
-           <motion.div 
-             className="h-full bg-brand-yellow rounded-full shadow-[0_0_15px_#f8fb02]" 
-             initial={{ width: 0 }}
-             animate={{ width: '60%' }}
-           />
+
+        {/* Real scrubbing timeline */}
+        <div className="flex items-center gap-3 w-full max-w-[140px] sm:max-w-xs md:max-w-md">
+          <span className="text-[10px] font-mono text-brand-yellow shrink-0 font-bold select-none">{formatTime(currentTime)}</span>
+          <div className="relative flex-grow h-2 bg-black rounded-full border border-white/10 flex items-center group">
+            <input 
+              type="range"
+              min={0}
+              max={duration || 100}
+              value={currentTime}
+              onChange={handleProgressChange}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              title="Arrastra para adelantar/retroceder"
+            />
+            <div 
+              className="h-full bg-brand-yellow rounded-full shadow-[0_0_10px_#f8fb02]" 
+              style={{ width: `${progressPercent}%` }}
+            />
+            <div 
+              className="absolute w-3 h-3 bg-white rounded-full border-2 border-black opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+              style={{ left: `calc(${progressPercent}% - 6px)` }}
+            />
+          </div>
+          <span className="text-[10px] font-mono text-white/40 shrink-0 select-none">{formatTime(duration)}</span>
         </div>
       </div>
 
-      <div className="w-1/3 md:w-1/4 flex justify-end items-center gap-4 text-gray-500">
+      <div className="w-1/3 md:w-1/4 flex justify-end items-center gap-4 text-gray-400">
         <div className="lcd-display px-2 py-1 rounded-lg text-[10px] font-mono border-2 border-black hidden lg:block">
            VOL: 92%
         </div>
@@ -302,9 +361,9 @@ const AppContent = () => {
               {user ? (
                 <div className="flex items-center gap-1.5 md:gap-3">
                   <Link to="/settings" className="flex items-center gap-1.5 md:gap-3 bg-black/30 p-1 md:p-1.5 md:pr-3.5 rounded-lg md:rounded-2xl border-2 md:border-4 border-black group">
-                    <img src={user.photoURL || ''} className="w-5 h-5 md:w-9 md:h-9 rounded-lg border border-brand-yellow group-hover:scale-110 transition-transform" alt="avatar" />
+                    <img src={profile?.photoURL || user.photoURL || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400'} className="w-5 h-5 md:w-9 md:h-9 rounded-lg border border-brand-yellow group-hover:scale-110 transition-transform object-cover" alt="avatar" />
                     <div className="hidden sm:block text-left">
-                      <p className="text-[8px] md:text-[9px] font-black uppercase italic leading-none">{user.displayName?.split(' ')[0]}</p>
+                      <p className="text-[8px] md:text-[9px] font-black uppercase italic leading-none">{(profile?.displayName || user.displayName || 'McFly')?.split(' ')[0]}</p>
                       <p className="text-[7px] text-brand-yellow font-bold uppercase tracking-widest">{profile?.role || (isAdmin ? 'Admin' : 'Fan')}</p>
                     </div>
                   </Link>

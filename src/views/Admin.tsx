@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
+import { useMusic } from '../context/MusicContext';
 import { collection, query, getDocs, doc, updateDoc, addDoc, serverTimestamp, where, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
-import { Shield, Upload, Star, Music, User, Check, X, Radio, PlayCircle, PlusCircle, Pencil, Trash, Link2 } from 'lucide-react';
+import { Shield, Upload, Star, Music, User, Check, X, Radio, PlayCircle, PlusCircle, Pencil, Trash, Link2, ChevronUp, ChevronDown, Save, Play } from 'lucide-react';
 
 const AdminView = () => {
   const { user, isAdmin } = useAuth();
+  const { play } = useMusic();
   
   // Refs for hidden file inputs
   const radioFileInputRef = useRef<HTMLInputElement>(null);
@@ -20,6 +22,7 @@ const AdminView = () => {
   const [radioTitle, setRadioTitle] = useState('');
   const [spotifyInput, setSpotifyInput] = useState('');
   const [savingSpotify, setSavingSpotify] = useState(false);
+  const [radioStatus, setRadioStatus] = useState<{ type: 'success' | 'error' | '', message: string }>({ type: '', message: '' });
 
   // Artist form states
   const [showArtistForm, setShowArtistForm] = useState(false);
@@ -113,17 +116,91 @@ const AdminView = () => {
   const [localRadioTracks, setLocalRadioTracks] = useState<any[]>([]);
   const [uploadingLocalRadio, setUploadingLocalRadio] = useState(false);
   const [localRadioFile, setLocalRadioFile] = useState<File | null>(null);
+  const [savingRadioOrder, setSavingRadioOrder] = useState(false);
 
   const fetchLocalRadioTracks = async () => {
     try {
       const res = await fetch('/api/radio-local-songs');
       if (res.ok) {
         const data = await res.json();
-        setLocalRadioTracks(data);
+        
+        let fileOrder: string[] = [];
+        try {
+          const docRef = doc(db, 'config', 'radioOrder');
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            fileOrder = docSnap.data().fileOrder || [];
+          }
+        } catch (err) {
+          console.error("[RADIO ADM] Error getting custom radioOrder:", err);
+        }
+
+        if (fileOrder && fileOrder.length > 0) {
+          const sorted = [...data].sort((a: any, b: any) => {
+            const indexA = fileOrder.indexOf(a.fullName);
+            const indexB = fileOrder.indexOf(b.fullName);
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+            if (indexA !== -1) return -1;
+            if (indexB !== -1) return 1;
+            return 0;
+          });
+          setLocalRadioTracks(sorted);
+        } else {
+          setLocalRadioTracks(data);
+        }
       }
     } catch (e) {
       console.error("Error fetching local radio tracks:", e);
     }
+  };
+
+  const moveTrack = (index: number, direction: 'up' | 'down') => {
+    const updated = [...localRadioTracks];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= updated.length) return;
+    const temp = updated[index];
+    updated[index] = updated[targetIndex];
+    updated[targetIndex] = temp;
+    setLocalRadioTracks(updated);
+  };
+
+  const handleSaveRadioOrder = async () => {
+    setSavingRadioOrder(true);
+    try {
+      const fileOrder = localRadioTracks.map(t => t.fullName).filter(Boolean);
+      await setDoc(doc(db, 'config', 'radioOrder'), {
+        fileOrder,
+        updatedAt: serverTimestamp()
+      });
+      alert('¡Orden de reproducción favorito guardado con éxito!');
+    } catch (err: any) {
+      console.error("Error saving radio order:", err);
+      alert('Error al guardar el orden: ' + err.message);
+    } finally {
+      setSavingRadioOrder(false);
+    }
+  };
+
+  const handlePlayRadioWithOrder = async () => {
+    if (localRadioTracks.length === 0) {
+      alert('No hay canciones locales disponibles para reproducir.');
+      return;
+    }
+    setSavingRadioOrder(true);
+    try {
+      const fileOrder = localRadioTracks.map(t => t.fullName).filter(Boolean);
+      await setDoc(doc(db, 'config', 'radioOrder'), {
+        fileOrder,
+        updatedAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.warn("Soft error saving order before playing:", err);
+    } finally {
+      setSavingRadioOrder(false);
+    }
+    const firstTrack = localRadioTracks[0];
+    play(firstTrack);
+    alert(`¡Iniciando RapLife Radio en el orden elegido! Sonando ahora: ${firstTrack.title}`);
   };
 
   useEffect(() => {
@@ -383,6 +460,32 @@ const AdminView = () => {
     }
   };
 
+  const handleRenameLocalRadio = async (fullName: string) => {
+    const extIndex = fullName.lastIndexOf('.');
+    const baseSuggestion = extIndex !== -1 ? fullName.substring(0, extIndex) : fullName;
+    
+    const newName = prompt(`Introduce el nuevo nombre para "${fullName}" (sin extensión):`, baseSuggestion);
+    if (!newName || newName.trim() === '' || newName.trim() === baseSuggestion) return;
+    
+    try {
+      const res = await fetch('/api/rename-radio-local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldFileName: fullName, newFileName: newName.trim() })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Error al renombrar');
+      }
+
+      alert('¡Archivo renombrado con éxito!');
+      await fetchLocalRadioTracks();
+    } catch (err: any) {
+      alert('Error al renombrar: ' + err.message);
+    }
+  };
+
   if (!isAdmin) return (
     <div className="flex items-center justify-center h-[80vh]">
       <div className="bg-red-500/10 border-2 border-red-500 p-10 rounded-3xl text-center">
@@ -394,8 +497,16 @@ const AdminView = () => {
   );
 
   const handleUploadRadio = async () => {
-    if (!radioFile || !radioTitle) return;
+    if (!radioFile) {
+      alert('Por favor selecciona un archivo de audio (.mp3 o .wav) primero.');
+      return;
+    }
+    if (!radioTitle) {
+      alert('Por favor introduce un título para el clip en la nube.');
+      return;
+    }
     setUploading(true);
+    setRadioStatus({ type: '', message: '' });
     try {
       const formData = new FormData();
       formData.append('track', radioFile);
@@ -432,12 +543,14 @@ const AdminView = () => {
         isRadioInterstitial: true,
         createdAt: serverTimestamp()
       });
-      alert('Podcast/Clip de radio subido con éxito');
+      
+      setRadioStatus({ type: 'success', message: '¡Audio/Clip inyectado en la radio con éxito!' });
       setRadioFile(null);
       setRadioTitle('');
+      setTimeout(() => setRadioStatus({ type: '', message: '' }), 6000);
     } catch (e: any) {
       console.error(e);
-      alert('Error en la carga: ' + (e.message || 'Error desconocido'));
+      setRadioStatus({ type: 'error', message: '⚠️ Error al subir: ' + (e.message || 'Error desconocido') });
     }
     setUploading(false);
   };
@@ -520,7 +633,17 @@ const AdminView = () => {
                     ref={radioFileInputRef}
                     accept="audio/*" 
                     className="hidden"
-                    onChange={e => setRadioFile(e.target.files?.[0] || null)}
+                    onChange={e => {
+                      const file = e.target.files?.[0] || null;
+                      setRadioFile(file);
+                      if (file && !radioTitle) {
+                        const clean = file.name.split('.').slice(0, -1).join('.')
+                          .replace(/[_-]/g, ' ')
+                          .replace(/\s+/g, ' ')
+                          .trim();
+                        setRadioTitle(clean);
+                      }
+                    }}
                   />
                   <div className="w-full border-2 border-dashed border-white/10 p-6 rounded-xl flex flex-col items-center group-hover/upload:border-brand-yellow/50 transition-all bg-white/[0.02]">
                      <Upload size={24} className="text-gray-600 group-hover/upload:text-brand-yellow mb-2 group-hover/upload:scale-110 transition-transform" />
@@ -532,11 +655,21 @@ const AdminView = () => {
                </div>
                <button 
                  onClick={handleUploadRadio}
-                 disabled={uploading || !radioFile || !radioTitle}
+                 disabled={uploading}
                  className="w-full py-4 bg-brand-yellow text-black font-black italic uppercase text-xs rounded-xl shadow-glow hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-20 disabled:grayscale cursor-pointer"
                >
                  {uploading ? 'PROCESANDO...' : 'INYECTAR EN RADIO NUBE'}
                </button>
+
+               {radioStatus.message && (
+                 <div className={`p-4 rounded-xl text-center text-[10px] font-black uppercase tracking-wider border ${
+                   radioStatus.type === 'success' 
+                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
+                     : 'bg-red-500/10 border-red-500/30 text-red-400'
+                 }`}>
+                   {radioStatus.message}
+                 </div>
+               )}
             </div>
           </div>
 
@@ -549,9 +682,9 @@ const AdminView = () => {
             <h3 className="text-xl font-black italic tracking-tighter uppercase text-brand-yellow flex items-center gap-2">
               <Radio size={22} /> AUDIO LOCAL (SERVIDOR)
             </h3>
-            <p className="text-gray-500 text-xs font-semibold leading-relaxed uppercase tracking-wider">
-              Sube música o elimina archivos directamente de la carpeta <code className="lowercase text-gray-400">public/assets/radio</code>.
-            </p>
+             <p className="text-gray-500 text-xs font-semibold leading-relaxed uppercase tracking-wider">
+               Carga tus audios favoritos directamente al reproductor de RapLife Radio en el servidor.
+             </p>
 
             <div className="space-y-4">
               <div className="p-4 bg-black/40 border border-white/5 rounded-2xl space-y-3">
@@ -584,25 +717,58 @@ const AdminView = () => {
                 )}
               </div>
 
-              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-2 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar">
                 {localRadioTracks.map((track, idx) => (
-                  <div key={track.fullName || track.id || `local-track-${idx}`} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl text-xs hover:bg-white/5 transition-all">
-                    <div className="flex items-center gap-3 overflow-hidden">
+                  <div key={track.fullName || track.id || `local-track-${idx}`} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl text-xs hover:bg-white/5 transition-all gap-2">
+                    <div className="flex items-center gap-2 overflow-hidden flex-grow">
+                      {/* Move Up / Down Handles/Buttons */}
+                      <div className="flex flex-col gap-0.5 mr-1 flex-shrink-0">
+                        <button
+                          onClick={() => moveTrack(idx, 'up')}
+                          disabled={idx === 0}
+                          className="p-1 text-gray-500 hover:text-brand-yellow hover:bg-white/5 disabled:opacity-20 disabled:hover:text-gray-500 disabled:hover:bg-transparent rounded transition-all cursor-pointer"
+                          title="Subir de posición"
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          onClick={() => moveTrack(idx, 'down')}
+                          disabled={idx === localRadioTracks.length - 1}
+                          className="p-1 text-gray-500 hover:text-brand-yellow hover:bg-white/5 disabled:opacity-20 disabled:hover:text-gray-500 disabled:hover:bg-transparent rounded transition-all cursor-pointer"
+                          title="Bajar de posición"
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      </div>
+
                       <Music size={14} className="text-brand-yellow flex-shrink-0" />
                       <div className="truncate">
-                        <p className="font-bold truncate text-gray-300">{track.title || track.fullName}</p>
+                        <p className="font-bold truncate text-gray-300">
+                          <span className="text-brand-yellow/50 font-mono text-[10px] mr-1">#{idx + 1}</span>
+                          {track.title || track.fullName}
+                        </p>
                         <p className="text-[9px] text-gray-500 uppercase font-mono mt-0.5">
                           {track.artistName} {track.fileSizeHuman && `• ${track.fileSizeHuman}`}
                         </p>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => handleDeleteLocalRadio(track.fullName || '')}
-                      className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0 active:scale-95"
-                      title="Eliminar del Servidor"
-                    >
-                      <Trash size={14} />
-                    </button>
+                    
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button 
+                        onClick={() => handleRenameLocalRadio(track.fullName || '')}
+                        className="p-2 text-gray-400 hover:text-brand-yellow hover:bg-brand-yellow/10 rounded-lg transition-colors active:scale-95"
+                        title="Cambiar nombre / Editar"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteLocalRadio(track.fullName || '')}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors active:scale-95"
+                        title="Eliminar del Servidor"
+                      >
+                        <Trash size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {localRadioTracks.length === 0 && (
@@ -611,6 +777,28 @@ const AdminView = () => {
                   </div>
                 )}
               </div>
+
+              {localRadioTracks.length > 0 && (
+                <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-white/5">
+                  <button
+                    onClick={handleSaveRadioOrder}
+                    disabled={savingRadioOrder}
+                    className="flex items-center justify-center gap-2 py-3 px-4 bg-white/10 text-white hover:bg-white/15 active:scale-95 border-2 border-white/20 hover:border-white/30 font-black uppercase text-[10px] tracking-wider rounded-xl transition-all cursor-pointer"
+                    title="Guardar el orden personalizado actual"
+                  >
+                    <Save size={13} className="text-brand-yellow" />
+                    {savingRadioOrder ? "GUARDANDO..." : "GUARDAR ORDEN"}
+                  </button>
+                  <button
+                    onClick={handlePlayRadioWithOrder}
+                    className="flex items-center justify-center gap-2 py-3 px-4 bg-brand-yellow text-black hover:bg-brand-yellow/90 active:scale-95 border-2 border-brand-yellow hover:border-brand-yellow/90 font-black uppercase text-[10px] tracking-wider rounded-xl transition-all shadow-[0_4px_15px_rgba(248,251,2,0.15)] cursor-pointer"
+                    title="Guardar orden e iniciar la radio desde la primera canción"
+                  >
+                    <Play size={13} fill="black" />
+                    INICIAR RADIO
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

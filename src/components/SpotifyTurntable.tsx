@@ -642,6 +642,128 @@ export default function SpotifyTurntable() {
     setIsPlayingRecording(false);
   };
 
+  const [uploadingToRadio, setUploadingToRadio] = useState(false);
+
+  const handleUploadToRadio = async () => {
+    if (!recordedBuffer) return;
+    
+    // Choose a custom name
+    const defaultVoiceName = `Locucion Vocal ${new Date().toLocaleDateString('es-ES').replace(/\//g, '-')}`;
+    const customName = prompt(
+      "Introduce un título/nombre para tu nota de voz en la radio (por ej: Locución de McFly, Mensaje Secreto):", 
+      defaultVoiceName
+    );
+    if (customName === null) return; // User cancelled
+    
+    const sanitizedName = (customName.trim() || defaultVoiceName).replace(/[^a-zA-Z0-9\s-_]/g, '');
+    const fileName = `${sanitizedName}.wav`;
+
+    setUploadingToRadio(true);
+    try {
+      const duration = recordedBuffer.duration;
+      const sampleRate = recordedBuffer.sampleRate;
+
+      // Render the vocal *with* all processing sliders applied inside OfflineAudioContext!
+      const offlineCtx = new OfflineAudioContext(2, sampleRate * duration, sampleRate);
+
+      const vocalSourceNode = offlineCtx.createBufferSource();
+      vocalSourceNode.buffer = recordedBuffer;
+
+      const inputGainNode = offlineCtx.createGain();
+      inputGainNode.gain.value = micGain / 100;
+
+      const lowEQFilter = offlineCtx.createBiquadFilter();
+      lowEQFilter.type = 'lowshelf';
+      lowEQFilter.frequency.value = 200;
+      lowEQFilter.gain.value = lowEQ;
+
+      const midEQFilter = offlineCtx.createBiquadFilter();
+      midEQFilter.type = 'peaking';
+      midEQFilter.frequency.value = 1500;
+      midEQFilter.Q.value = 1.0;
+      midEQFilter.gain.value = midEQ;
+
+      const highEQFilter = offlineCtx.createBiquadFilter();
+      highEQFilter.type = 'highshelf';
+      highEQFilter.frequency.value = 6000;
+      highEQFilter.gain.value = highEQ;
+
+      const distNode = offlineCtx.createWaveShaper();
+      distNode.curve = generateDistortionCurve(distortionAmount);
+      distNode.oversample = '4x';
+
+      // Delay Node setup
+      const dNode = offlineCtx.createDelay(1.5);
+      dNode.delayTime.value = 0.35;
+      const dGainNode = offlineCtx.createGain();
+      dGainNode.gain.value = delayWet / 100;
+
+      const dFeedback = offlineCtx.createGain();
+      dFeedback.gain.value = 0.3;
+      dNode.connect(dFeedback);
+      dFeedback.connect(dNode);
+
+      // Reverb Node setup
+      const rNode = offlineCtx.createConvolver();
+      rNode.buffer = getImpulseResponseBuffer(offlineCtx as any, 1.8, 2.5);
+      const rGainNode = offlineCtx.createGain();
+      rGainNode.gain.value = reverbWet / 100;
+
+      const outputSubmixNode = offlineCtx.createGain();
+      outputSubmixNode.gain.value = 1.0; // max headroom output
+
+      // Connect DSP graph
+      vocalSourceNode.connect(inputGainNode);
+      inputGainNode.connect(lowEQFilter);
+      lowEQFilter.connect(midEQFilter);
+      midEQFilter.connect(highEQFilter);
+      highEQFilter.connect(distNode);
+
+      // Dry sound to submix
+      distNode.connect(outputSubmixNode);
+
+      // Delay path
+      distNode.connect(dNode);
+      dNode.connect(dGainNode);
+      dGainNode.connect(outputSubmixNode);
+
+      // Reverb path
+      distNode.connect(rNode);
+      rNode.connect(rGainNode);
+      rGainNode.connect(outputSubmixNode);
+
+      // Direct to offline output rendering target
+      outputSubmixNode.connect(offlineCtx.destination);
+
+      vocalSourceNode.start(0);
+      const renderedBuffer = await offlineCtx.startRendering();
+
+      // Encode output AudioBuffer into CD-fidelity WAV blob
+      const wavBlob = audioBufferToWav(renderedBuffer);
+
+      // Now map to a FormData and send to '/api/upload-radio-local'
+      const formData = new FormData();
+      formData.append('track', wavBlob, fileName);
+
+      const res = await fetch('/api/upload-radio-local', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (res.ok) {
+        alert(`🎙️ ¡Nota de voz "${sanitizedName}" inyectada con éxito en RapLife Radio! Ahora aparecerá en la playlist de la radio.`);
+      } else {
+        const errorData = await res.json();
+        alert(`Error al inyectar nota de voz: ${errorData.error || 'error desconocido'}`);
+      }
+    } catch (err: any) {
+      console.error("Master & radio upload error:", err);
+      alert("Error al masterizar y guardar la nota de voz en la radio: " + err.message);
+    } finally {
+      setUploadingToRadio(false);
+    }
+  };
+
   const handleDownloadWithEffects = async () => {
     if (!recordedBuffer) return;
     setIsBouncing(true);
@@ -1473,6 +1595,17 @@ export default function SpotifyTurntable() {
                         >
                           <Download size={10} />
                           <span>{isBouncing ? 'MASTERIZANDO VOZ...' : 'DESCARGAR AUDIO CON EFECTOS ✨'}</span>
+                        </button>
+
+                        {/* Direct save to RapLife Radio Playlist */}
+                        <button
+                          onClick={handleUploadToRadio}
+                          disabled={uploadingToRadio || isBouncing}
+                          className="px-4 py-2.5 rounded-xl font-mono text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2 bg-black border border-brand-yellow text-brand-yellow hover:bg-brand-yellow/10 disabled:opacity-50"
+                          title="Inyecta esta locución masterizada directamente como un archivo local en la playlist de la radio"
+                        >
+                          <Radio size={10} />
+                          <span>{uploadingToRadio ? 'SUBIENDO...' : 'INYECTAR EN RAPLIFE RADIO 📻'}</span>
                         </button>
                       </>
                     ) : (

@@ -274,6 +274,8 @@ const StudioView = () => {
   const [accepted, setAccepted] = useState<boolean>(false);
   const [selfie, setSelfie] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [genderFilter, setGenderFilter] = useState<'male' | 'female'>('male');
   const [selectedOutfit, setSelectedOutfit] = useState<PredefinedOutfit | null>(null);
   const [isOutfitModified, setIsOutfitModified] = useState(false);
@@ -416,12 +418,13 @@ const StudioView = () => {
   const pitchShifterRef = useRef<DelayLinePitchShifter | null>(null);
 
   useEffect(() => {
-    if (profile) {
+    if (profile && !isInitialized) {
       setAccepted(profile.acceptedEcosystem || false);
       setSelfie(profile.avatarSelfieUrl || null);
       setAvatarUrl(profile.avatarUrl || null);
+      setIsInitialized(true);
     }
-  }, [profile]);
+  }, [profile, isInitialized]);
 
   // Convert image url to base64 helper
   const getBase64FromUrl = async (url: string): Promise<string | null> => {
@@ -616,6 +619,7 @@ const StudioView = () => {
       const avatarData = {
         avatarUrl: avatarUrl || selfie, // Si no aplicó IA todavía, guarda su selfie base
         avatarSelfieUrl: selfie,
+        photoURL: avatarUrl || selfie, // Ensure unified system reads this as the active profile picture
         acceptedEcosystem: true,
         hasAvatar: true,
         updatedAt: serverTimestamp()
@@ -654,41 +658,41 @@ const StudioView = () => {
 
   // Clean / reset photo workspace
   const handleResetWorkspace = async () => {
-    if (window.confirm('¿Quieres cambiar tu foto base y limpiar tu lienzo de diseño? Se eliminará de la base de datos para que puedas subir una nueva.')) {
-      if (user) {
-        setLoading(true);
-        setLoadingStep('Eliminando tu avatar anterior de la nube...');
-        try {
-          const docRef = doc(db, 'users', user.uid);
-          await updateDoc(docRef, {
-            avatarSelfieUrl: '',
-            avatarUrl: '',
-            hasAvatar: false,
-            updatedAt: serverTimestamp()
-          });
-          
-          setSelfie(null);
-          setAvatarUrl(null);
-          setSelectedOutfit(null);
-          setErrorText(null);
-          setIsOutfitModified(false);
-          setSuccessText('¡Se ha eliminado la foto anterior! Ahora puedes subir un nuevo lienzo.');
-          setTimeout(() => setSuccessText(null), 3000);
-        } catch (e: any) {
-          console.error("Error clearing avatar from db:", e);
-          setErrorText("Ocurrió un error al limpiar en la base de datos: " + e.message);
-        } finally {
-          setLoading(false);
-          setLoadingStep('');
-        }
-      } else {
+    if (user) {
+      setLoading(true);
+      setLoadingStep('Eliminando tu avatar anterior de la nube...');
+      try {
+        const docRef = doc(db, 'users', user.uid);
+        await updateDoc(docRef, {
+          avatarSelfieUrl: '',
+          avatarUrl: '',
+          photoURL: '',
+          hasAvatar: false,
+          updatedAt: serverTimestamp()
+        });
+        
         setSelfie(null);
         setAvatarUrl(null);
         setSelectedOutfit(null);
         setErrorText(null);
         setIsOutfitModified(false);
+        setSuccessText('¡Se ha eliminado la foto anterior! Ahora puedes subir un nuevo lienzo.');
+        setTimeout(() => setSuccessText(null), 3000);
+      } catch (e: any) {
+        console.error("Error clearing avatar from db:", e);
+        setErrorText("Ocurrió un error al limpiar en la base de datos: " + e.message);
+      } finally {
+        setLoading(false);
+        setLoadingStep('');
       }
+    } else {
+      setSelfie(null);
+      setAvatarUrl(null);
+      setSelectedOutfit(null);
+      setErrorText(null);
+      setIsOutfitModified(false);
     }
+    setShowDeleteConfirm(false);
   };
 
   // Download Avatar File safely
@@ -820,12 +824,35 @@ const StudioView = () => {
                 <ImageIcon size={14} /> LIENZO REAL (MÁSTER DIGITAL)
               </span>
               {selfie && (
-                <button
-                  onClick={handleResetWorkspace}
-                  className="text-[9px] font-black text-red-500 hover:underline uppercase tracking-wider flex items-center gap-1 cursor-pointer"
-                >
-                  <Trash2 size={12} /> CAMBIAR FOTO BASE
-                </button>
+                <div className="flex items-center gap-2">
+                  {!showDeleteConfirm ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="text-[9px] font-black text-red-500 hover:text-red-400 hover:underline uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 size={12} /> CAMBIAR FOTO BASE
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 bg-red-500/15 border border-red-500/30 px-3 py-1.5 rounded-xl animate-pulse">
+                      <span className="text-[8px] font-black text-red-400 uppercase tracking-wildest">¿ELIMINAR DE LA NUBE?</span>
+                      <button
+                        type="button"
+                        onClick={handleResetWorkspace}
+                        className="text-[8px] font-black bg-red-600 text-white px-2.5 py-1 rounded-lg uppercase hover:bg-red-700 transition-colors cursor-pointer shadow-sm"
+                      >
+                        SÍ, BORRAR
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="text-[8px] font-black bg-zinc-800 text-gray-300 px-2.5 py-1 rounded-lg uppercase hover:bg-zinc-700 transition-colors cursor-pointer"
+                      >
+                        NO
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -972,6 +999,15 @@ const StudioView = () => {
                         <Undo size={14} /> VER FOTO ORIGINAL
                       </button>
                     )}
+                    
+                    <button 
+                      type="button"
+                      onClick={handleResetWorkspace}
+                      className="px-4 py-2.5 bg-red-950/25 border border-red-500/20 text-red-400 hover:text-white hover:bg-red-900/30 font-black uppercase text-[10px] rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                      title="Elimina tu foto de forma definitiva para poder subir otra"
+                    >
+                      <Trash2 size={14} /> ELIMINAR FOTO Y EMPEZAR DE NUEVO
+                    </button>
                   </div>
 
                   <div className="flex items-center gap-2.5">

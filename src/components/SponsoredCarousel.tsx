@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, ChevronLeft, ChevronRight, Music, Heart, Disc, ExternalLink } from 'lucide-react';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { useAuth } from '../context/AuthContext';
 
 interface SponsoredArtist {
   id: string;
@@ -50,6 +51,7 @@ const STATIC_SPONSORS: SponsoredArtist[] = [
 ];
 
 export default function SponsoredCarousel() {
+  const { profile } = useAuth();
   const [artists, setArtists] = useState<SponsoredArtist[]>(STATIC_SPONSORS);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [autoplay, setAutoplay] = useState(true);
@@ -146,7 +148,17 @@ export default function SponsoredCarousel() {
     setCurrentIndex(prev => (prev + 1) % artists.length);
   };
 
-  const activeArtist = artists[currentIndex] || STATIC_SPONSORS[0];
+  const rawActiveArtist = artists[currentIndex] || STATIC_SPONSORS[0];
+  const isMcFly = rawActiveArtist.id === 'sponsor_mac_flyer' || rawActiveArtist.displayName.toLowerCase().includes('mcfly');
+
+  const activeArtist = (isMcFly && profile) ? {
+    ...rawActiveArtist,
+    displayName: profile.displayName || rawActiveArtist.displayName,
+    photoURL: profile.photoURL || profile.avatarUrl || rawActiveArtist.photoURL,
+    bio: profile.bio || rawActiveArtist.bio,
+    spotifyUrl: profile.spotifyUrl || rawActiveArtist.spotifyUrl,
+    instagramUrl: profile.instagramUrl || rawActiveArtist.instagramUrl,
+  } : rawActiveArtist;
 
   return (
     <div 

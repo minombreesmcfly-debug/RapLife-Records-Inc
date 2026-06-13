@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { collection, query, getDocs, where, limit } from 'firebase/firestore';
+import { collection, query, getDocs, where, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 interface Track {
@@ -10,6 +10,7 @@ interface Track {
   audioUrl: string;
   coverUrl?: string;
   isRadioInterstitial?: boolean;
+  fullName?: string;
 }
 
 interface MusicContextType {
@@ -25,6 +26,9 @@ interface MusicContextType {
   volume: number;
   setVolume: (vol: number) => void;
   fadeVolume: (target: number, durationMs: number) => Promise<void>;
+  currentTime: number;
+  duration: number;
+  seek: (time: number) => void;
 }
 
 const MusicContext = createContext<MusicContextType | null>(null);
@@ -38,6 +42,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
   const [songsPlayedCount, setSongsPlayedCount] = useState(0);
+
+  // Time tracking states
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   // Volume & Fade states
   const [volume, setVolumeState] = useState(1.0);
@@ -129,6 +137,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [volume]);
 
+  // Seek helper
+  const seek = (time: number) => {
+    if (audioRef.current) {
+      const targetTime = Math.max(0, Math.min(duration || 1, time));
+      audioRef.current.currentTime = targetTime;
+      setCurrentTime(targetTime);
+    }
+  };
+
   useEffect(() => {
     audioRef.current = new Audio();
     audioRef.current.onended = () => {
@@ -137,6 +154,21 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     audioRef.current.onerror = (e) => {
       const err = audioRef.current?.error;
       console.warn("[RADIO] Audio element error occurred:", err?.code, err?.message);
+    };
+    audioRef.current.ontimeupdate = () => {
+      if (audioRef.current) {
+        setCurrentTime(audioRef.current.currentTime);
+      }
+    };
+    audioRef.current.ondurationchange = () => {
+      if (audioRef.current) {
+        setDuration(audioRef.current.duration || 0);
+      }
+    };
+    audioRef.current.onloadedmetadata = () => {
+      if (audioRef.current) {
+        setDuration(audioRef.current.duration || 0);
+      }
     };
 
     // Auto-load an initial track and autoplay
@@ -149,7 +181,23 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (localRes.ok) {
           const locals = await localRes.json();
           if (locals && locals.length > 0) {
-            initial = locals[0];
+            // Check if there is configured play order
+            try {
+              const docSnap = await getDoc(doc(db, 'config', 'radioOrder'));
+              if (docSnap.exists()) {
+                const order: string[] = docSnap.data().fileOrder || [];
+                if (order.length > 0) {
+                  const firstInOrder = locals.find((t: any) => t.fullName === order[0]);
+                  if (firstInOrder) {
+                    initial = firstInOrder;
+                  }
+                }
+              }
+            } catch (e) {}
+
+            if (!initial) {
+              initial = locals[0];
+            }
           }
         }
 
@@ -165,6 +213,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         if (initial) {
           setCurrentTrack(initial);
+          setCurrentTime(0);
+          setDuration(0);
           if (audioRef.current) {
             audioRef.current.src = initial.audioUrl;
             audioRef.current.autoplay = true;
@@ -225,10 +275,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const nextTrack = async () => {
-    // Logic: Pick a random song. Every 2-3 songs, pick an interstitial if available.
+    // Logic: If there is a radioOrder configuration, follow the custom sequence.
+    // Otherwise: Pick a random song. Every 2-3 songs, pick an interstitial if available.
     let next: Track | null = null;
-    
-    const shouldPlayInterstitial = songsPlayedCount > 0 && songsPlayedCount % 2 === 0;
 
     // Fetch local files in real-time
     let currentLocalTracks: Track[] = [];
@@ -241,43 +290,84 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error("[RADIO] Error fetching local tracks in nextTrack:", e);
     }
 
-    if (shouldPlayInterstitial) {
-      const dbInterstitials: Track[] = [];
-      try {
-        const q = query(collection(db, 'tracks'), where('isRadioInterstitial', '==', true), limit(10));
-        const snap = await getDocs(q);
-        snap.forEach(d => {
-          dbInterstitials.push({ id: d.id, ...d.data() } as Track);
-        });
-      } catch (err) {
-        console.error("Error fetching db interstitials:", err);
+    // Try fetching custom radio order first
+    let fileOrder: string[] = [];
+    try {
+      const docRef = doc(db, 'config', 'radioOrder');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        fileOrder = docSnap.data().fileOrder || [];
+      }
+    } catch (err) {
+      console.error("[RADIO] Error fetching custom radioOrder:", err);
+    }
+
+    if (fileOrder && fileOrder.length > 0) {
+      // Find current track index in custom order list
+      let currentIndex = -1;
+      if (currentTrack) {
+        currentIndex = fileOrder.findIndex(f => 
+          f === currentTrack.fullName || 
+          (currentTrack.audioUrl && (currentTrack.audioUrl.endsWith('/' + f) || currentTrack.audioUrl.endsWith('/' + encodeURIComponent(f))))
+        );
       }
 
-      const activeInterstitials = [...dbInterstitials, ...currentLocalTracks];
-      if (activeInterstitials.length > 0) {
-        const randomIndex = Math.floor(Math.random() * activeInterstitials.length);
-        next = activeInterstitials[randomIndex];
-        setSongsPlayedCount(0); // Reset after interstitial
+      let nextIndex = 0;
+      if (currentIndex !== -1) {
+        nextIndex = (currentIndex + 1) % fileOrder.length;
+      }
+
+      const nextFileName = fileOrder[nextIndex];
+      // Match with loaded local songs
+      next = currentLocalTracks.find(t => t.fullName === nextFileName) || null;
+
+      if (next) {
+        console.log(`[RADIO] Sequential play activated: moving to track index ${nextIndex + 1}/${fileOrder.length} (${nextFileName})`);
       }
     }
 
+    // Fall back to random track logic if no custom ordering is found or failed to find next track
     if (!next) {
-      const dbTracks: Track[] = [];
-      try {
-        const q = query(collection(db, 'tracks'), where('isRadioInterstitial', '==', false), limit(25));
-        const snap = await getDocs(q);
-        snap.forEach(d => {
-          dbTracks.push({ id: d.id, ...d.data() } as Track);
-        });
-      } catch (err) {
-        console.error("Error fetching db tracks:", err);
+      const shouldPlayInterstitial = songsPlayedCount > 0 && songsPlayedCount % 2 === 0;
+
+      if (shouldPlayInterstitial) {
+        const dbInterstitials: Track[] = [];
+        try {
+          const q = query(collection(db, 'tracks'), where('isRadioInterstitial', '==', true), limit(10));
+          const snap = await getDocs(q);
+          snap.forEach(d => {
+            dbInterstitials.push({ id: d.id, ...d.data() } as Track);
+          });
+        } catch (err) {
+          console.error("Error fetching db interstitials:", err);
+        }
+
+        const activeInterstitials = [...dbInterstitials, ...currentLocalTracks];
+        if (activeInterstitials.length > 0) {
+          const randomIndex = Math.floor(Math.random() * activeInterstitials.length);
+          next = activeInterstitials[randomIndex];
+          setSongsPlayedCount(0); // Reset after interstitial
+        }
       }
 
-      const activeTracks = [...dbTracks, ...currentLocalTracks];
-      if (activeTracks.length > 0) {
-        const randomIndex = Math.floor(Math.random() * activeTracks.length);
-        next = activeTracks[randomIndex];
-        setSongsPlayedCount(prev => prev + 1);
+      if (!next) {
+        const dbTracks: Track[] = [];
+        try {
+          const q = query(collection(db, 'tracks'), where('isRadioInterstitial', '==', false), limit(25));
+          const snap = await getDocs(q);
+          snap.forEach(d => {
+            dbTracks.push({ id: d.id, ...d.data() } as Track);
+          });
+        } catch (err) {
+          console.error("Error fetching db tracks:", err);
+        }
+
+        const activeTracks = [...dbTracks, ...currentLocalTracks];
+        if (activeTracks.length > 0) {
+          const randomIndex = Math.floor(Math.random() * activeTracks.length);
+          next = activeTracks[randomIndex];
+          setSongsPlayedCount(prev => prev + 1);
+        }
       }
     }
 
@@ -299,6 +389,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
       }
       setCurrentTrack(track);
+      setCurrentTime(0);
+      setDuration(0);
       setIsPlaying(true);
     }
   };
@@ -344,7 +436,23 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   return (
-    <MusicContext.Provider value={{ currentTrack, isPlaying, play, togglePlay, nextTrack, radioMode, setRadioMode, isMuted, toggleMute, volume, setVolume, fadeVolume }}>
+    <MusicContext.Provider value={{ 
+      currentTrack, 
+      isPlaying, 
+      play, 
+      togglePlay, 
+      nextTrack, 
+      radioMode, 
+      setRadioMode, 
+      isMuted, 
+      toggleMute, 
+      volume, 
+      setVolume, 
+      fadeVolume,
+      currentTime,
+      duration,
+      seek 
+    }}>
       {children}
     </MusicContext.Provider>
   );
