@@ -8,7 +8,7 @@ import { db, storage } from '../lib/firebase';
 import { Shield, Upload, Star, Music, User, Check, X, Radio, PlayCircle, PlusCircle, Pencil, Trash, Link2, ChevronUp, ChevronDown, Save, Play } from 'lucide-react';
 
 const AdminView = () => {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, loading } = useAuth();
   const { play, setRadioMode, playRadioPlaylist } = useMusic();
   
   // Refs for hidden file inputs
@@ -389,7 +389,7 @@ const AdminView = () => {
       await fetchLocalRadioTracks();
     };
     fetchData();
-  }, [isAdmin]);
+  }, [isAdmin, loading]);
 
   const approveTrack = async (id: string) => {
     try {
@@ -637,6 +637,14 @@ const AdminView = () => {
       alert('Error al de renombre: ' + err.message);
     }
   };
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-[80vh]">
+      <div className="py-20 text-center animate-pulse italic font-black uppercase text-xl text-brand-yellow">
+        SINTONIZANDO ACCESO...
+      </div>
+    </div>
+  );
 
   if (!isAdmin) return (
     <div className="flex items-center justify-center h-[80vh]">
