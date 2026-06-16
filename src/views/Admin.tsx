@@ -124,49 +124,76 @@ const AdminView = () => {
   const fetchLocalRadioTracks = async () => {
     try {
       const res = await fetch('/api/radio-local-songs');
+      let data: any[] = [];
       if (res.ok) {
-        const data = await res.json();
-        
-        let fileOrder: string[] = [];
-        // First try to fetch from Firestore
-        try {
-          const docRef = doc(db, 'config', 'radioOrder');
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            fileOrder = docSnap.data().fileOrder || [];
-            try {
-              localStorage.setItem('raplife_radio_order', JSON.stringify(fileOrder));
-            } catch (_) {}
-          } else {
-            // Check localStorage
-            const cached = localStorage.getItem('raplife_radio_order');
-            if (cached) {
-              fileOrder = JSON.parse(cached);
-            }
-          }
-        } catch (err) {
-          console.warn("[RADIO ADM] Firestore offline or error getting radioOrder. Using localStorage fallback:", err);
-          try {
-            const cached = localStorage.getItem('raplife_radio_order');
-            if (cached) {
-              fileOrder = JSON.parse(cached);
-            }
-          } catch (_) {}
-        }
+        data = await res.json();
+      }
 
-        if (fileOrder && fileOrder.length > 0) {
-          const sorted = [...data].sort((a: any, b: any) => {
-            const indexA = fileOrder.indexOf(a.fullName);
-            const indexB = fileOrder.indexOf(b.fullName);
-            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-            if (indexA !== -1) return -1;
-            if (indexB !== -1) return 1;
-            return 0;
-          });
-          setLocalRadioTracks(sorted);
+      // Fetch approved or legacy database tracks and map them to track items
+      try {
+        const tracksQ = query(collection(db, 'tracks'));
+        const tracksSnap = await getDocs(tracksQ);
+        const dbTracks = tracksSnap.docs
+          .map(docSnap => {
+            const pt = docSnap.data();
+            const status = pt.status || (pt.approved ? 'approved' : 'pending');
+            return {
+              id: docSnap.id,
+              artistId: pt.artistId || '',
+              artistName: pt.artistName || 'Artista',
+              title: pt.title || 'Track sin título',
+              audioUrl: pt.audioUrl,
+              coverUrl: pt.coverUrl || '/assets/player_idle.png',
+              isRadioInterstitial: false,
+              fullName: pt.title || docSnap.id,
+              status
+            };
+          })
+          .filter(t => t.status === 'approved' || !t.status);
+        data = [...data, ...dbTracks];
+      } catch (dbErr) {
+        console.warn("[ADMIN RADIO] Approved/legacy db tracks fetch error:", dbErr);
+      }
+        
+      let fileOrder: string[] = [];
+      // First try to fetch from Firestore
+      try {
+        const docRef = doc(db, 'config', 'radioOrder');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          fileOrder = docSnap.data().fileOrder || [];
+          try {
+            localStorage.setItem('raplife_radio_order', JSON.stringify(fileOrder));
+          } catch (_) {}
         } else {
-          setLocalRadioTracks(data);
+          // Check localStorage
+          const cached = localStorage.getItem('raplife_radio_order');
+          if (cached) {
+            fileOrder = JSON.parse(cached);
+          }
         }
+      } catch (err) {
+        console.warn("[RADIO ADM] Firestore offline or error getting radioOrder. Using localStorage fallback:", err);
+        try {
+          const cached = localStorage.getItem('raplife_radio_order');
+          if (cached) {
+            fileOrder = JSON.parse(cached);
+          }
+        } catch (_) {}
+      }
+
+      if (fileOrder && fileOrder.length > 0) {
+        const sorted = [...data].sort((a: any, b: any) => {
+          const indexA = fileOrder.indexOf(a.fullName || a.id || '');
+          const indexB = fileOrder.indexOf(b.fullName || b.id || '');
+          if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+          if (indexA !== -1) return -1;
+          if (indexB !== -1) return 1;
+          return 0;
+        });
+        setLocalRadioTracks(sorted);
+      } else {
+        setLocalRadioTracks(data);
       }
     } catch (e) {
       console.error("Error fetching local radio tracks:", e);
@@ -185,7 +212,7 @@ const AdminView = () => {
 
   const handleSaveRadioOrder = async () => {
     setSavingRadioOrder(true);
-    const fileOrder = localRadioTracks.map(t => t.fullName).filter(Boolean);
+    const fileOrder = localRadioTracks.map(t => t.fullName || t.id).filter(Boolean);
     
     // Always save to localStorage immediately for fast, offline-first reliability
     try {
@@ -212,7 +239,7 @@ const AdminView = () => {
       return;
     }
     setSavingRadioOrder(true);
-    const fileOrder = localRadioTracks.map(t => t.fullName).filter(Boolean);
+    const fileOrder = localRadioTracks.map(t => t.fullName || t.id).filter(Boolean);
     try {
       localStorage.setItem('raplife_radio_order', JSON.stringify(fileOrder));
     } catch (_) {}
@@ -235,61 +262,104 @@ const AdminView = () => {
   useEffect(() => {
     if (!isAdmin) return;
     const fetchData = async () => {
-      // Artists
+      // Fetch Artists
+      let loadedArtists: any[] = [];
       try {
         const artistQ = query(collection(db, 'users'));
         const artistSnap = await getDocs(artistQ);
-        let loadedArtists = artistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-        const hasAitana = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('aitana'));
-        const hasJay = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('jay'));
-
-        if (!hasAitana) {
-          const docId = 'artist_aitana_blue';
-          await setDoc(doc(db, 'users', docId), {
-            uid: docId,
-            displayName: 'Aitana Blue Dream',
-            role: 'artist',
-            category: 'G FUNK / EDM',
-            bio: 'Fusión sublime que une las melodías grooves del G-Funk clásico de West Coast con la vibración electrónica y bailable del EDM moderno.',
-            photoURL: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600&auto=format&fit=crop',
-            spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
-            instagramUrl: 'https://instagram.com/',
-            appleMusicUrl: '',
-            isPinned: true,
-            isExclusive: true,
-            plan: 'premium',
-            createdAt: serverTimestamp()
-          });
-        }
-
-        if (!hasJay) {
-          const docId = 'artist_jay_santana';
-          await setDoc(doc(db, 'users', docId), {
-            uid: docId,
-            displayName: 'Jay Santana',
-            role: 'artist',
-            category: 'RAP / REGIONAL MEXICANO TRAP',
-            bio: 'Fusión pionera que une la crudeza del rap de calle con los arreglos profundos y el alma del Regional Mexicano en ritmo Trap.',
-            photoURL: '/src/assets/images/jay_santana_ghetto_1781111479453.png',
-            spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
-            instagramUrl: 'https://instagram.com/',
-            appleMusicUrl: '',
-            isPinned: true,
-            isExclusive: true,
-            plan: 'premium',
-            createdAt: serverTimestamp()
-          });
-        }
-
-        if (!hasAitana || !hasJay) {
-          const updatedSnap = await getDocs(artistQ);
-          loadedArtists = updatedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        }
-
+        loadedArtists = artistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         setArtists(loadedArtists);
       } catch (err) {
         console.error("Error loading artists in Admin dashboard:", err);
+      }
+
+      // Safe isolated seeding
+      try {
+        const hasAitana = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('aitana'));
+        const hasJay = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('jay'));
+        const hasMcFly = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('mcfly'));
+
+        let needsReload = false;
+
+        if (!hasAitana) {
+          try {
+            const docId = 'artist_aitana_blue';
+            await setDoc(doc(db, 'users', docId), {
+              uid: docId,
+              displayName: 'Aitana Blue Dream',
+              role: 'artist',
+              category: 'G FUNK / EDM',
+              bio: 'Fusión sublime que une las melodías grooves del G-Funk clásico de West Coast con la vibración electrónica y bailable del EDM moderno.',
+              photoURL: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600&auto=format&fit=crop',
+              spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
+              instagramUrl: 'https://instagram.com/',
+              appleMusicUrl: '',
+              isPinned: true,
+              isExclusive: true,
+              plan: 'premium',
+              createdAt: serverTimestamp()
+            });
+            needsReload = true;
+          } catch (e) {
+            console.warn("Could not auto-seed Aitana:", e);
+          }
+        }
+
+        if (!hasJay) {
+          try {
+            const docId = 'artist_jay_santana';
+            await setDoc(doc(db, 'users', docId), {
+              uid: docId,
+              displayName: 'Jay Santana',
+              role: 'artist',
+              category: 'RAP / REGIONAL MEXICANO TRAP',
+              bio: 'Fusión pionera que une la crudeza del rap de calle con los arreglos profundos y el alma del Regional Mexicano en ritmo Trap.',
+              photoURL: '/src/assets/images/jay_santana_ghetto_1781111479453.png',
+              spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
+              instagramUrl: 'https://instagram.com/',
+              appleMusicUrl: '',
+              isPinned: true,
+              isExclusive: true,
+              plan: 'premium',
+              createdAt: serverTimestamp()
+            });
+            needsReload = true;
+          } catch (e) {
+            console.warn("Could not auto-seed Jay Santana:", e);
+          }
+        }
+
+        if (!hasMcFly) {
+          try {
+            const docId = 'artist_mcfly_emece';
+            await setDoc(doc(db, 'users', docId), {
+              uid: docId,
+              displayName: 'McFly EmeCe',
+              role: 'artist',
+              category: 'RAP TRAP CONSPIRACIONES',
+              bio: 'Líricas punzantes y bases oscuras cargadas de verdades incómodas, enigmas y teorías de conspiración sobre el asfalto pesado.',
+              photoURL: '/src/assets/images/mcfly_ninja_rapper_1781111492480.png',
+              spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
+              instagramUrl: 'https://instagram.com/',
+              appleMusicUrl: '',
+              isPinned: true,
+              isExclusive: true,
+              plan: 'premium',
+              createdAt: serverTimestamp()
+            });
+            needsReload = true;
+          } catch (e) {
+            console.warn("Could not auto-seed McFly EmeCe:", e);
+          }
+        }
+
+        if (needsReload) {
+          const artistQ = query(collection(db, 'users'));
+          const artistSnap = await getDocs(artistQ);
+          setArtists(artistSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }
+      } catch (err) {
+        console.error("Error checking or seeding default artists:", err);
       }
 
       // Pending tracks
@@ -476,7 +546,22 @@ const AdminView = () => {
     }
   };
 
-  const handleDeleteLocalRadio = async (fullName: string) => {
+  const handleDeleteLocalRadio = async (fullName: string, id?: string) => {
+    // Check if it is a database-backed track or local disk file
+    const isDbTrack = id && !fullName.endsWith('.mp3') && !fullName.endsWith('.wav') && !fullName.endsWith('.m4a') && !fullName.endsWith('.ogg');
+    
+    if (isDbTrack) {
+      if (!window.confirm(`¿Seguro que quieres eliminar el track de base de datos "${fullName}" de la radio?`)) return;
+      try {
+        await deleteDoc(doc(db, 'tracks', id));
+        alert('¡Track de base de datos eliminado con éxito!');
+        await fetchLocalRadioTracks();
+      } catch (err: any) {
+        alert('Error al eliminar track de Firestore: ' + err.message);
+      }
+      return;
+    }
+
     if (!window.confirm(`¿Seguro que quieres eliminar ${fullName} de la radio local?`)) return;
     try {
       const res = await fetch('/api/delete-radio-local', {
@@ -504,9 +589,26 @@ const AdminView = () => {
     setEditingTrackName(baseSuggestion);
   };
 
-  const saveInlineRename = async (oldFullName: string, newBaseName: string) => {
+  const saveInlineRename = async (oldFullName: string, newBaseName: string, id?: string) => {
     if (!newBaseName || newBaseName.trim() === '') {
       alert('El nombre no puede estar vacío.');
+      return;
+    }
+
+    // Check if it is a database-backed track or local disk file
+    const isDbTrack = id && !oldFullName.endsWith('.mp3') && !oldFullName.endsWith('.wav') && !oldFullName.endsWith('.m4a') && !oldFullName.endsWith('.ogg');
+
+    if (isDbTrack) {
+      try {
+        await updateDoc(doc(db, 'tracks', id), {
+          title: newBaseName.trim()
+        });
+        setEditingTrackIndex(null);
+        await fetchLocalRadioTracks();
+        alert('¡Track de base de datos renombrado con éxito!');
+      } catch (err: any) {
+        alert('Error al renombrar track en Firestore: ' + err.message);
+      }
       return;
     }
     
@@ -753,7 +855,7 @@ const AdminView = () => {
                                 onChange={(e) => setEditingTrackName(e.target.value)}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
-                                    saveInlineRename(track.fullName, editingTrackName);
+                                    saveInlineRename(track.fullName, editingTrackName, track.id);
                                   } else if (e.key === 'Escape') {
                                     setEditingTrackIndex(null);
                                   }
@@ -764,7 +866,7 @@ const AdminView = () => {
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0">
                             <button
-                              onClick={() => saveInlineRename(track.fullName, editingTrackName)}
+                              onClick={() => saveInlineRename(track.fullName, editingTrackName, track.id)}
                               className="p-1.5 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/10 rounded-lg transition-colors active:scale-95"
                               title="Guardar nombre"
                             >
@@ -826,7 +928,7 @@ const AdminView = () => {
                             <Pencil size={13} />
                           </button>
                           <button 
-                            onClick={() => handleDeleteLocalRadio(track.fullName || '')}
+                            onClick={() => handleDeleteLocalRadio(track.fullName || '', track.id)}
                             className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors active:scale-95"
                             title="Eliminar audio"
                           >

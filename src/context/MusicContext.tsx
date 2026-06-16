@@ -198,57 +198,89 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const loadInitialTrack = async () => {
       try {
         let initial: Track | null = null;
-        
-        // Try to load any local radio track first
-        const localRes = await fetch('/api/radio-local-songs');
-        if (localRes.ok) {
-          const locals = await localRes.json();
-          if (locals && locals.length > 0) {
-            // Check if there is configured play order
-            let order: string[] = [];
-            try {
-              const docSnap = await getDoc(doc(db, 'config', 'radioOrder'));
-              if (docSnap.exists()) {
-                order = docSnap.data().fileOrder || [];
-                try {
-                  localStorage.setItem('raplife_radio_order', JSON.stringify(order));
-                } catch (_) {}
-              } else {
-                const cached = localStorage.getItem('raplife_radio_order');
-                if (cached) order = JSON.parse(cached);
-              }
-            } catch (e) {
-              console.warn("[RADIO] Firestore offline during initial load. Using localStorage:", e);
+        let locals: Track[] = [];
+
+        // 1. Fetch local radio files
+        try {
+          const localRes = await fetch('/api/radio-local-songs');
+          if (localRes.ok) {
+            locals = await localRes.json();
+          }
+        } catch (e) {
+          console.warn("[RADIO] Local radio files fetch error:", e);
+        }
+
+        // 2. Fetch approved or legacy database tracks and map them to Track items
+        try {
+          const tracksQ = query(collection(db, 'tracks'));
+          const tracksSnap = await getDocs(tracksQ);
+          const dbTracks = tracksSnap.docs
+            .map(docSnap => {
+              const data = docSnap.data();
+              const status = data.status || (data.approved ? 'approved' : 'pending');
+              return {
+                id: docSnap.id,
+                artistId: data.artistId || '',
+                artistName: data.artistName || 'Artista',
+                title: data.title || 'Track sin título',
+                audioUrl: data.audioUrl,
+                coverUrl: data.coverUrl || '/assets/player_idle.png',
+                isRadioInterstitial: false,
+                fullName: data.title || docSnap.id,
+                status
+              } as Track & { status: string };
+            })
+            .filter(t => t.status === 'approved' || !t.status);
+          locals = [...locals, ...dbTracks];
+        } catch (dbErr) {
+          console.warn("[RADIO] Approved/legacy db tracks fetch error:", dbErr);
+        }
+
+        if (locals && locals.length > 0) {
+          // Check if there is configured play order
+          let order: string[] = [];
+          try {
+            const docSnap = await getDoc(doc(db, 'config', 'radioOrder'));
+            if (docSnap.exists()) {
+              order = docSnap.data().fileOrder || [];
               try {
-                const cached = localStorage.getItem('raplife_radio_order');
-                if (cached) order = JSON.parse(cached);
+                localStorage.setItem('raplife_radio_order', JSON.stringify(order));
               } catch (_) {}
+            } else {
+              const cached = localStorage.getItem('raplife_radio_order');
+              if (cached) order = JSON.parse(cached);
             }
+          } catch (e) {
+            console.warn("[RADIO] Firestore offline during initial load. Using localStorage:", e);
+            try {
+              const cached = localStorage.getItem('raplife_radio_order');
+              if (cached) order = JSON.parse(cached);
+            } catch (_) {}
+          }
 
-            // Sync with local playlist (sorted)
-            let sortedLocals = [...locals];
-            if (order && order.length > 0) {
-              sortedLocals.sort((a, b) => {
-                const idxA = order.indexOf(a.fullName || '');
-                const idxB = order.indexOf(b.fullName || '');
-                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-                if (idxA !== -1) return -1;
-                if (idxB !== -1) return 1;
-                return 0;
-              });
-            }
-            setPlaylist(sortedLocals);
+          // Sync with local playlist (sorted)
+          let sortedLocals = [...locals];
+          if (order && order.length > 0) {
+            sortedLocals.sort((a, b) => {
+              const idxA = order.indexOf(a.fullName || a.id || '');
+              const idxB = order.indexOf(b.fullName || b.id || '');
+              if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+              if (idxA !== -1) return -1;
+              if (idxB !== -1) return 1;
+              return 0;
+            });
+          }
+          setPlaylist(sortedLocals);
 
-            if (order.length > 0) {
-              const firstInOrder = sortedLocals.find((t: any) => t.fullName === order[0]);
-              if (firstInOrder) {
-                initial = firstInOrder;
-              }
+          if (order.length > 0) {
+            const firstInOrder = sortedLocals.find((t: any) => (t.fullName === order[0] || t.id === order[0]));
+            if (firstInOrder) {
+              initial = firstInOrder;
             }
+          }
 
-            if (!initial) {
-              initial = sortedLocals[0];
-            }
+          if (!initial) {
+            initial = sortedLocals[0];
           }
         }
 

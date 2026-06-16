@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { MusicProvider, useMusic } from './context/MusicContext';
-import { Home, User, Radio, Gamepad2, Settings, LogIn, LogOut, Mic2, Heart, PlusCircle, ShieldCheck, Play, Upload, Volume2, VolumeX, Shirt, X, AlertTriangle, ExternalLink, Compass, Monitor, Smartphone } from 'lucide-react';
+import { Home, User, Radio, Gamepad2, Settings, LogIn, LogOut, Mic2, Heart, PlusCircle, ShieldCheck, Play, Upload, Volume2, VolumeX, Shirt, X, AlertTriangle, ExternalLink, Compass, Monitor, Smartphone, Square, Pause, Rewind, FastForward, SkipForward } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { signInWithGoogle, signInWithGoogleRedirect, getRedirectResultHelper, logoutUser } from './lib/firebase';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -39,6 +39,13 @@ const PlayerBar = () => {
     seek(time);
   };
 
+  const handleStop = () => {
+    if (isPlaying) {
+      togglePlay();
+    }
+    seek(0);
+  };
+
   return (
     <div className="fixed bottom-16 md:bottom-0 left-0 right-0 h-20 md:h-24 bg-boombox-gray border-t-4 md:border-t-8 border-black flex items-center px-4 md:px-10 z-[200] boombox-texture shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
       <div className="flex items-center gap-3 md:gap-4 w-1/3 md:w-1/4">
@@ -53,38 +60,66 @@ const PlayerBar = () => {
       </div>
 
       <div className="flex flex-col items-center gap-1.5 md:gap-2 flex-grow justify-center">
-        {/* Playback Controls button cluster */}
-        <div className="flex items-center gap-3 md:gap-8">
+        {/* Playback Controls button cluster - Deck Style */}
+        <div className="flex items-center gap-2 md:gap-5">
+          {/* REWIND */}
           <button 
-            onClick={() => seek(currentTime - 10)} 
-            className="chrome-button p-1 min-w-[36px] h-7 rounded-lg flex items-center justify-center bg-black hover:scale-105 active:scale-95 transition-all text-[9.5px] font-mono font-black text-white/60 hover:text-white cursor-pointer select-none"
-            title="Atrás 10 segundos"
+            onClick={() => seek(Math.max(0, currentTime - 10))} 
+            className="p-2 bg-black hover:bg-black/80 text-gray-400 hover:text-white rounded-lg transition-all active:scale-90 cursor-pointer border border-white/5 flex flex-col items-center justify-center min-w-[36px]"
+            title="Retroceder 10s (REWIND)"
           >
-            -10s
+            <Rewind size={14} />
+            <span className="text-[6px] font-mono font-bold mt-0.5 tracking-tighter">REW</span>
           </button>
 
+          {/* STOP */}
           <button 
-            onClick={togglePlay} 
-            className="w-10 h-10 md:w-12 md:h-12 chrome-button rounded-full flex items-center justify-center hover:scale-110 active:scale-95 shadow-lg group select-none cursor-pointer"
-            title={isPlaying ? "Pausar Radio" : "Iniciar Radio"}
+            onClick={handleStop} 
+            className="p-2 bg-black hover:bg-black/80 text-gray-400 hover:text-red-500 rounded-lg transition-all active:scale-90 cursor-pointer border border-white/5 flex flex-col items-center justify-center min-w-[36px]"
+            title="Detener canción (STOP)"
           >
-             {isPlaying ? <div className="w-4 h-4 bg-black rounded-sm" /> : <Play className="ml-1 text-black" size={20} fill="black" />}
+            <Square size={14} fill="currentColor" />
+            <span className="text-[6px] font-mono font-bold mt-0.5 tracking-tighter">STOP</span>
           </button>
 
+          {/* PLAY */}
           <button 
-            onClick={() => seek(currentTime + 15)} 
-            className="chrome-button p-1 min-w-[36px] h-7 rounded-lg flex items-center justify-center bg-black hover:scale-105 active:scale-95 transition-all text-[9.5px] font-mono font-black text-brand-yellow cursor-pointer select-none"
-            title="Adelantar 15 segundos"
+            onClick={() => { if (!isPlaying) togglePlay(); }} 
+            className={`p-2.5 rounded-lg transition-all active:scale-95 cursor-pointer border flex flex-col items-center justify-center min-w-[42px] ${!isPlaying ? 'bg-brand-yellow text-black border-brand-yellow shadow-[0_0_10px_rgba(248,251,2,0.3)]' : 'bg-black hover:bg-black/80 text-gray-400 hover:text-white border-white/5'}`}
+            title="Iniciar reproducción (PLAY)"
           >
-            +15s
+            <Play size={16} fill={!isPlaying ? "black" : "currentColor"} />
+            <span className="text-[6px] font-mono font-bold mt-0.5 tracking-tighter">PLAY</span>
           </button>
 
+          {/* PAUSE */}
+          <button 
+            onClick={() => { if (isPlaying) togglePlay(); }} 
+            className={`p-2.5 rounded-lg transition-all active:scale-95 cursor-pointer border flex flex-col items-center justify-center min-w-[42px] ${isPlaying ? 'bg-brand-yellow text-black border-brand-yellow shadow-[0_0_10px_rgba(248,251,2,0.3)]' : 'bg-black hover:bg-black/80 text-gray-400 hover:text-white border-white/5'}`}
+            title="Pausar reproducción (PAUSE)"
+          >
+            <Pause size={16} fill={isPlaying ? "black" : "none"} />
+            <span className="text-[6px] font-mono font-bold mt-0.5 tracking-tighter">PAUSE</span>
+          </button>
+
+          {/* FAST-FORWARD */}
+          <button 
+            onClick={() => seek(Math.min(duration || 9999, currentTime + 15))} 
+            className="p-2 bg-black hover:bg-black/80 text-gray-400 hover:text-white rounded-lg transition-all active:scale-90 cursor-pointer border border-white/5 flex flex-col items-center justify-center min-w-[36px]"
+            title="Adelantar 15s (FF)"
+          >
+            <FastForward size={14} />
+            <span className="text-[6px] font-mono font-bold mt-0.5 tracking-tighter">F-FWD</span>
+          </button>
+
+          {/* NEXT */}
           <button 
             onClick={nextTrack} 
-            className="chrome-button p-1.5 rounded-lg flex items-center justify-center bg-black hover:scale-105 active:scale-95 transition-all cursor-pointer select-none" 
-            title="Siguiente canción (Saltar)"
+            className="p-2 bg-black hover:bg-black/80 text-gray-400 hover:text-brand-yellow rounded-lg transition-all active:scale-90 cursor-pointer border border-white/5 flex flex-col items-center justify-center min-w-[36px]" 
+            title="Siguiente canción (SKIP)"
           >
-            <div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[8px] border-l-black mr-[-1px]" style={{ borderLeftColor: 'black' }} />
+            <SkipForward size={14} />
+            <span className="text-[6px] font-mono font-bold mt-0.5 tracking-tighter">SKIP</span>
           </button>
         </div>
 
