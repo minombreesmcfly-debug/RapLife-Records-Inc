@@ -82,10 +82,26 @@ const HomeView = () => {
         const snapPinned = await getDocs(qPinned);
         setPinnedArtists(snapPinned.docs.map(d => ({ id: d.id, ...d.data() })));
 
-        // Fetch Recent Tracks
-        const qTracks = query(collection(db, 'tracks'), where('isRadioInterstitial', '==', false), orderBy('createdAt', 'desc'), limit(10));
-        const snapTracks = await getDocs(qTracks);
-        setRecentTracks(snapTracks.docs.map(d => ({ id: d.id, ...d.data() })));
+        // Fetch Recent Tracks with robust index fallback
+        let tracksList: any[] = [];
+        try {
+          const qTracks = query(collection(db, 'tracks'), where('isRadioInterstitial', '==', false), orderBy('createdAt', 'desc'), limit(10));
+          const snapTracks = await getDocs(qTracks);
+          tracksList = snapTracks.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (queryErr) {
+          console.warn("[HOME] Composite index check or query failed, using client-side sorting fallback:", queryErr);
+          const qTracksFallback = query(collection(db, 'tracks'), limit(100));
+          const snapTracksFallback = await getDocs(qTracksFallback);
+          tracksList = snapTracksFallback.docs.map(d => ({ id: d.id, ...d.data() }))
+            .filter((t: any) => t.isRadioInterstitial !== true);
+          tracksList.sort((a: any, b: any) => {
+            const timeA = a.createdAt?.seconds || 0;
+            const timeB = b.createdAt?.seconds || 0;
+            return timeB - timeA;
+          });
+          tracksList = tracksList.slice(0, 10);
+        }
+        setRecentTracks(tracksList);
       } catch (e) {
         console.error("Error fetching home data:", e);
       }

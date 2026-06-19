@@ -9,7 +9,7 @@ import { Shield, Upload, Star, Music, User, Check, X, Radio, PlayCircle, PlusCir
 
 const AdminView = () => {
   const { user, isAdmin, loading } = useAuth();
-  const { play, setRadioMode, playRadioPlaylist } = useMusic();
+  const { play, setRadioMode, playRadioPlaylist, currentTrack, isPlaying, togglePlay, nextTrack, radioMode } = useMusic();
   
   // Refs for hidden file inputs
   const radioFileInputRef = useRef<HTMLInputElement>(null);
@@ -148,8 +148,7 @@ const AdminView = () => {
               fullName: pt.title || docSnap.id,
               status
             };
-          })
-          .filter(t => t.status === 'approved' || !t.status);
+          });
         data = [...data, ...dbTracks];
       } catch (dbErr) {
         console.warn("[ADMIN RADIO] Approved/legacy db tracks fetch error:", dbErr);
@@ -269,97 +268,12 @@ const AdminView = () => {
         const artistSnap = await getDocs(artistQ);
         loadedArtists = artistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         setArtists(loadedArtists);
-      } catch (err) {
-        console.error("Error loading artists in Admin dashboard:", err);
-      }
-
-      // Safe isolated seeding
-      try {
-        const hasAitana = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('aitana'));
-        const hasJay = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('jay'));
-        const hasMcFly = loadedArtists.some(a => (a as any).displayName?.toLowerCase().includes('mcfly'));
-
-        let needsReload = false;
-
-        if (!hasAitana) {
-          try {
-            const docId = 'artist_aitana_blue';
-            await setDoc(doc(db, 'users', docId), {
-              uid: docId,
-              displayName: 'Aitana Blue Dream',
-              role: 'artist',
-              category: 'G FUNK / EDM',
-              bio: 'Fusión sublime que une las melodías grooves del G-Funk clásico de West Coast con la vibración electrónica y bailable del EDM moderno.',
-              photoURL: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600&auto=format&fit=crop',
-              spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
-              instagramUrl: 'https://instagram.com/',
-              appleMusicUrl: '',
-              isPinned: true,
-              isExclusive: true,
-              plan: 'premium',
-              createdAt: serverTimestamp()
-            });
-            needsReload = true;
-          } catch (e) {
-            console.warn("Could not auto-seed Aitana:", e);
-          }
+      } catch (err: any) {
+        if (err?.message?.includes('offline') || err?.message?.includes('Failed to get document')) {
+          console.warn("[ADMIN] Loading artists: Firestore client is offline.", err);
+        } else {
+          console.error("Error loading artists in Admin dashboard:", err);
         }
-
-        if (!hasJay) {
-          try {
-            const docId = 'artist_jay_santana';
-            await setDoc(doc(db, 'users', docId), {
-              uid: docId,
-              displayName: 'Jay Santana',
-              role: 'artist',
-              category: 'RAP / REGIONAL MEXICANO TRAP',
-              bio: 'Fusión pionera que une la crudeza del rap de calle con los arreglos profundos y el alma del Regional Mexicano en ritmo Trap.',
-              photoURL: '/src/assets/images/jay_santana_ghetto_1781111479453.png',
-              spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
-              instagramUrl: 'https://instagram.com/',
-              appleMusicUrl: '',
-              isPinned: true,
-              isExclusive: true,
-              plan: 'premium',
-              createdAt: serverTimestamp()
-            });
-            needsReload = true;
-          } catch (e) {
-            console.warn("Could not auto-seed Jay Santana:", e);
-          }
-        }
-
-        if (!hasMcFly) {
-          try {
-            const docId = 'artist_mcfly_emece';
-            await setDoc(doc(db, 'users', docId), {
-              uid: docId,
-              displayName: 'McFly EmeCe',
-              role: 'artist',
-              category: 'RAP TRAP CONSPIRACIONES',
-              bio: 'Líricas punzantes y bases oscuras cargadas de verdades incómodas, enigmas y teorías de conspiración sobre el asfalto pesado.',
-              photoURL: '/src/assets/images/mcfly_ninja_rapper_1781111492480.png',
-              spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
-              instagramUrl: 'https://instagram.com/',
-              appleMusicUrl: '',
-              isPinned: true,
-              isExclusive: true,
-              plan: 'premium',
-              createdAt: serverTimestamp()
-            });
-            needsReload = true;
-          } catch (e) {
-            console.warn("Could not auto-seed McFly EmeCe:", e);
-          }
-        }
-
-        if (needsReload) {
-          const artistQ = query(collection(db, 'users'));
-          const artistSnap = await getDocs(artistQ);
-          setArtists(artistSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-        }
-      } catch (err) {
-        console.error("Error checking or seeding default artists:", err);
       }
 
       // Pending tracks
@@ -367,8 +281,12 @@ const AdminView = () => {
         const trackQ = query(collection(db, 'tracks'), where('status', '==', 'pending'));
         const trackSnap = await getDocs(trackQ);
         setPendingTracks(trackSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (err) {
-        console.error("Error loading pending tracks in Admin dashboard:", err);
+      } catch (err: any) {
+        if (err?.message?.includes('offline') || err?.message?.includes('Failed to get document')) {
+          console.warn("[ADMIN] Loading pending tracks: Firestore client is offline.", err);
+        } else {
+          console.error("Error loading pending tracks in Admin dashboard:", err);
+        }
       }
 
       // Fetch Spotify config
@@ -381,8 +299,12 @@ const AdminView = () => {
             setSpotifyInput(`https://open.spotify.com/playlist/${data.playlistId}`);
           }
         }
-      } catch (err) {
-        console.error("Error fetching spotify admin config:", err);
+      } catch (err: any) {
+        if (err?.message?.includes('offline') || err?.message?.includes('Failed to get document')) {
+          console.warn("[ADMIN] Spotify config load warning: Firestore client is offline.", err);
+        } else {
+          console.warn("[ADMIN] Error fetching spotify admin config (swallowed as warning):", err);
+        }
       }
 
       // Fetch local radio tracks
@@ -776,6 +698,118 @@ const AdminView = () => {
             <p className="text-gray-400 text-xs font-semibold leading-relaxed uppercase tracking-wider">
               ¡Sube canciones, promos, anuncios o intros directamente en la radio local! Alterna y acomoda el orden de reproducción como prefieras.
             </p>
+
+            {/* Live Playback Monitor & Queue Board */}
+            <div className="bg-black/80 border border-brand-yellow/30 p-5 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 ${isPlaying ? '' : 'hidden'}`}></span>
+                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isPlaying ? 'bg-emerald-400' : 'bg-gray-650'}`}></span>
+                  </span>
+                  <span className="font-mono text-[9px] tracking-widest uppercase text-white font-black">
+                    {radioMode ? 'SINTONIZACIÓN EN VIVO (RADIO REPLAY)' : 'MONITOR EN SILENCIO (RADIO APAGADA)'}
+                  </span>
+                </div>
+                
+                {localRadioTracks.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setRadioMode(true);
+                      playRadioPlaylist(localRadioTracks, 0);
+                    }}
+                    className="text-[9px] font-mono font-black uppercase text-brand-yellow hover:underline cursor-pointer"
+                  >
+                    🚀 REINICIAR EMISIÓN
+                  </button>
+                )}
+              </div>
+
+              {currentTrack ? (
+                <div className="flex items-center gap-4">
+                  {/* Thumbnail Cover */}
+                  <div className="relative w-14 h-14 rounded-xl overflow-hidden border-2 border-white/10 shrink-0 bg-neutral-900 flex items-center justify-center">
+                    {currentTrack.coverUrl ? (
+                      <img referrerPolicy="no-referrer" src={currentTrack.coverUrl || "/assets/player_idle.png"} className="w-full h-full object-cover" alt="Cover" />
+                    ) : (
+                      <Music className="text-gray-600" size={20} />
+                    )}
+                    {isPlaying && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <div className="flex gap-0.5 items-end h-5">
+                          <span className="w-[3px] bg-brand-yellow animate-bounce" style={{ animationDuration: '0.6s' }}></span>
+                          <span className="w-[3px] bg-brand-yellow animate-bounce" style={{ animationDuration: '0.9s', animationDelay: '0.15s' }}></span>
+                          <span className="w-[3px] bg-brand-yellow animate-bounce" style={{ animationDuration: '0.7s', animationDelay: '0.3s' }}></span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Metadata & Progress details */}
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="font-bold text-xs text-white truncate uppercase tracking-tighter">
+                      {currentTrack.title || currentTrack.fullName}
+                    </p>
+                    <p className="text-[10px] text-brand-yellow truncate uppercase font-bold tracking-tight">
+                      {currentTrack.artistName || 'LOCUTOR / INVITADO'}
+                    </p>
+                    
+                    {/* Simulated visual progress bar */}
+                    <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden mt-2">
+                      <div 
+                        className={`bg-brand-yellow h-full ${isPlaying ? 'animate-pulse' : ''}`}
+                        style={{ width: isPlaying ? '60%' : '20%' }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-2 text-center">
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">NINGÚN TEMA SINTONIZADO EN LA RADIO</p>
+                  <p className="text-[9px] text-gray-650 uppercase font-medium mt-1">Presiona "Iniciar Radio" abajo para sintonizar los temas de la secuencia</p>
+                </div>
+              )}
+
+              {/* Upcoming Track in Sequence */}
+              {localRadioTracks.length > 0 && (
+                <div className="bg-white/[0.02] border border-white/5 p-2.5 rounded-xl text-[10px] uppercase font-mono flex items-center justify-between gap-2">
+                  <span className="text-gray-550 font-bold">AL AIRE SIGUIENTE:</span>
+                  <span className="text-gray-300 font-black truncate max-w-[200px]">
+                    {(() => {
+                      const curIndex = currentTrack ? localRadioTracks.findIndex(t => t.id === currentTrack.id || (t.fullName && t.fullName === currentTrack.fullName)) : -1;
+                      if (curIndex !== -1 && localRadioTracks.length > 1) {
+                        const nextItem = localRadioTracks[(curIndex + 1) % localRadioTracks.length];
+                        return nextItem.title || nextItem.fullName;
+                      }
+                      return localRadioTracks[0]?.title || localRadioTracks[0]?.fullName || 'Fin de la playlist';
+                    })()}
+                  </span>
+                </div>
+              )}
+
+              {/* Quick Audio Controls for the Radio */}
+              {currentTrack && (
+                <div className="flex items-center gap-2 justify-end border-t border-white/5 pt-3">
+                  <button 
+                    onClick={togglePlay}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 active:scale-95 text-[9px] font-mono font-black uppercase text-white rounded-lg transition-all cursor-pointer"
+                    title={isPlaying ? 'Pausar emisión' : 'Reanudar emisión'}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${isPlaying ? 'bg-amber-400' : 'bg-brand-yellow'}`}></span>
+                    {isPlaying ? 'PAUSAR RADIO' : 'PLAY RADIO'}
+                  </button>
+
+                  <button 
+                    onClick={nextTrack}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-yellow hover:scale-[1.02] active:scale-95 text-[9px] text-black font-black uppercase rounded-lg transition-all cursor-pointer"
+                    title="Saltar inmediato al siguiente tema"
+                  >
+                    <span>SALTAR CANCIÓN</span>
+                    <Radio size={10} className="animate-pulse" />
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Drop and Pick Upload Area */}
             <div className="space-y-4">

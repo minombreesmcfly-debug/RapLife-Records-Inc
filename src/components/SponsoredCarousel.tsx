@@ -17,42 +17,21 @@ interface SponsoredArtist {
   isPinned?: boolean;
 }
 
-const STATIC_SPONSORS: SponsoredArtist[] = [
-  {
-    id: 'sponsor_mac_flyer',
-    displayName: 'McFly EmeCe',
-    role: 'artist',
-    category: 'RAP TRAP CONSPIRACIONES',
-    bio: 'Líricas punzantes y bases oscuras cargadas de verdades incómodas, enigmas y teorías de conspiración sobre el asfalto pesado.',
-    photoURL: '/src/assets/images/mcfly_ninja_rapper_1781111492480.png', // Ninja rapero hiperrealista
-    spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
-    instagramUrl: 'https://instagram.com/'
-  },
-  {
-    id: 'sponsor_jason_santana',
-    displayName: 'Jay Santana',
-    role: 'artist',
-    category: 'RAP / REGIONAL MEXICANO TRAP',
-    bio: 'Fusión pionera que une la crudeza del rap de calle con los arreglos profundos y el alma del Regional Mexicano en ritmo Trap.',
-    photoURL: '/src/assets/images/jay_santana_ghetto_1781111479453.png', // Ciudad gueto noche
-    spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
-    instagramUrl: 'https://instagram.com/'
-  },
-  {
-    id: 'sponsor_aitan_blue',
-    displayName: 'Aitana Blue Dream',
-    role: 'artist',
-    category: 'G FUNK / EDM',
-    bio: 'Fusión sublime que une las melodías grooves del G-Funk clásico de West Coast con la vibración electrónica y bailable del EDM moderno.',
-    photoURL: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600&auto=format&fit=crop', // Concierto luces neon
-    spotifyUrl: 'https://open.spotify.com/artist/1fYkTNZmwjgP3RkkRPhnsG',
-    instagramUrl: 'https://instagram.com/'
-  }
-];
+const PLACEHOLDER_SPONSOR: SponsoredArtist = {
+  id: 'placeholder_join',
+  displayName: 'Únete a RapLife Records',
+  role: 'artist',
+  category: 'PRÓXIMO TALENTO',
+  bio: 'Registra tu perfil de artista desde la plataforma para aparecer en esta sección, sincronizar tu Spotify y viralizar tus canciones.',
+  photoURL: 'https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?q=80&w=600&auto=format&fit=crop',
+  instagramUrl: '#'
+};
+
+const STATIC_SPONSORS: SponsoredArtist[] = [PLACEHOLDER_SPONSOR];
 
 export default function SponsoredCarousel() {
   const { profile } = useAuth();
-  const [artists, setArtists] = useState<SponsoredArtist[]>(STATIC_SPONSORS);
+  const [artists, setArtists] = useState<SponsoredArtist[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [autoplay, setAutoplay] = useState(true);
 
@@ -111,19 +90,12 @@ export default function SponsoredCarousel() {
           console.log("[CAROUSEL] Successfully loaded database artists:", dbArtists.map(a => a.displayName));
         }
 
-        // Combine static sponsors with db artists, preventing duplication, BUT put database-sourced ones FIRST so they instantly appear at the start of the slide!
-        const combined: SponsoredArtist[] = [...dbArtists];
-        STATIC_SPONSORS.forEach(staticSponsor => {
-          if (!combined.some(a => a.displayName.toLowerCase() === staticSponsor.displayName.toLowerCase())) {
-            combined.push(staticSponsor);
-          }
-        });
-
-        if (combined.length > 0) {
-          setArtists(combined);
-        }
+        // If we have dynamic artists in Firestore, show ONLY them. Otherwise, show placeholder.
+        const combined = dbArtists.length > 0 ? dbArtists : [PLACEHOLDER_SPONSOR];
+        setArtists(combined);
       } catch (e) {
         console.warn("[CAROUSEL] Database fetch error, falling back perfectly to static:", e);
+        setArtists([PLACEHOLDER_SPONSOR]);
       }
     };
     fetchArtists();
@@ -131,6 +103,7 @@ export default function SponsoredCarousel() {
 
   // Autoplay intervals
   useEffect(() => {
+    if (artists.length <= 1) return;
     if (!autoplay) return;
     const interval = setInterval(() => {
       setCurrentIndex(prev => (prev + 1) % artists.length);
@@ -148,8 +121,8 @@ export default function SponsoredCarousel() {
     setCurrentIndex(prev => (prev + 1) % artists.length);
   };
 
-  const rawActiveArtist = artists[currentIndex] || STATIC_SPONSORS[0];
-  const isMcFly = rawActiveArtist.id === 'sponsor_mac_flyer' || rawActiveArtist.displayName.toLowerCase().includes('mcfly');
+  const rawActiveArtist = artists[currentIndex] || PLACEHOLDER_SPONSOR;
+  const isMcFly = rawActiveArtist.id === 'artist_mcfly_emece' || rawActiveArtist.id === 'sponsor_mac_flyer' || rawActiveArtist.displayName.toLowerCase().includes('mcfly');
 
   const activeArtist = (isMcFly && profile) ? {
     ...rawActiveArtist,

@@ -269,14 +269,29 @@ export default function SpotifyTurntable() {
   useEffect(() => {
     const fetchInstrumentals = async () => {
       try {
-        const q = query(
-          collection(db, 'tracks'),
-          where('isRadioInterstitial', '==', false),
-          orderBy('createdAt', 'desc'),
-          limit(10)
-        );
-        const snap = await getDocs(q);
-        const loadedTracks: Track[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as Track));
+        let loadedTracks: Track[] = [];
+        try {
+          const q = query(
+            collection(db, 'tracks'),
+            where('isRadioInterstitial', '==', false),
+            orderBy('createdAt', 'desc'),
+            limit(10)
+          );
+          const snap = await getDocs(q);
+          loadedTracks = snap.docs.map(d => ({ id: d.id, ...d.data() } as Track));
+        } catch (queryErr) {
+          console.warn("[TURNTABLE] Beats query failed (index missing), falling back to client-side sort:", queryErr);
+          const qFallback = query(collection(db, 'tracks'), limit(100));
+          const snapFallback = await getDocs(qFallback);
+          loadedTracks = snapFallback.docs.map(d => ({ id: d.id, ...d.data() } as Track))
+            .filter(t => t.isRadioInterstitial !== true);
+          loadedTracks.sort((a, b) => {
+            const timeA = (a as any).createdAt?.seconds || 0;
+            const timeB = (b as any).createdAt?.seconds || 0;
+            return timeB - timeA;
+          });
+          loadedTracks = loadedTracks.slice(0, 10);
+        }
         setTracks(loadedTracks);
         
         if (loadedTracks.length > 0) {

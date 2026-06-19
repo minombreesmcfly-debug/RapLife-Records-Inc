@@ -229,8 +229,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 fullName: data.title || docSnap.id,
                 status
               } as Track & { status: string };
-            })
-            .filter(t => t.status === 'approved' || !t.status);
+            });
           locals = [...locals, ...dbTracks];
         } catch (dbErr) {
           console.warn("[RADIO] Approved/legacy db tracks fetch error:", dbErr);

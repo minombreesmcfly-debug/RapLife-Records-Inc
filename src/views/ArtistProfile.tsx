@@ -168,9 +168,23 @@ const ArtistProfileView = () => {
           setReelsList(data.reels || []);
         }
 
-        const q = query(collection(db, 'tracks'), where('artistId', '==', uid), orderBy('createdAt', 'desc'));
-        const trackSnap = await getDocs(q);
-        setTracks(trackSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        let artistTracks: any[] = [];
+        try {
+          const q = query(collection(db, 'tracks'), where('artistId', '==', uid), orderBy('createdAt', 'desc'));
+          const trackSnap = await getDocs(q);
+          artistTracks = trackSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (queryErr) {
+          console.warn("[PROFILE] Composite index failed on profile, using client fallback:", queryErr);
+          const qFallback = query(collection(db, 'tracks'), where('artistId', '==', uid));
+          const trackSnapFallback = await getDocs(qFallback);
+          artistTracks = trackSnapFallback.docs.map(d => ({ id: d.id, ...d.data() }));
+          artistTracks.sort((a, b) => {
+            const timeA = a.createdAt?.seconds || 0;
+            const timeB = b.createdAt?.seconds || 0;
+            return timeB - timeA;
+          });
+        }
+        setTracks(artistTracks);
       } catch (err) {
         console.error("Error loading artist in profile page:", err);
       } finally {
