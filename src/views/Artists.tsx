@@ -12,10 +12,15 @@ const ArtistsView = () => {
 
   useEffect(() => {
     const fetchArtists = async () => {
-      const q = query(collection(db, 'users'), where('role', '==', 'artist'));
-      const snap = await getDocs(q);
-      setArtists(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
+      try {
+        const q = query(collection(db, 'users'), where('role', '==', 'artist'));
+        const snap = await getDocs(q);
+        setArtists(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.warn("[ARTISTS] Failed to fetch artists roster offline:", err);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchArtists();
   }, []);

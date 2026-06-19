@@ -284,13 +284,30 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         if (!initial) {
-          // Fallback to database track
-          const q = query(collection(db, 'tracks'), limit(1));
-          const snap = await getDocs(q);
-          if (!snap.empty) {
-            const data = snap.docs[0].data();
-            initial = { id: snap.docs[0].id, ...data } as Track;
+          try {
+            // Fallback to database track
+            const q = query(collection(db, 'tracks'), limit(1));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+              const data = snap.docs[0].data();
+              initial = { id: snap.docs[0].id, ...data } as Track;
+            }
+          } catch (offlineErr) {
+            console.warn("[RADIO] Could not fetch fallback database track offline:", offlineErr);
           }
+        }
+
+        if (!initial) {
+          initial = {
+            id: 'fallback_raplife_radio_promo',
+            title: 'Sintonizando Emisión RapLife',
+            artistId: 'raplife_records',
+            artistName: 'RAPLIFE RADIO',
+            audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+            coverUrl: '/assets/player_idle.png',
+            isRadioInterstitial: false,
+            fullName: 'Sintonizando Emisión RapLife'
+          } as Track;
         }
 
         if (initial) {

@@ -39,6 +39,48 @@ function getGeminiClient(userKey?: string): GoogleGenAI {
   return aiClient;
 }
 
+function getGeminiClientWithKey(apiKey: string): GoogleGenAI {
+  return new GoogleGenAI({
+    apiKey: apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build'
+      }
+    }
+  });
+}
+
+async function resolveGeminiApiKey(userKey?: string): Promise<string> {
+  const trimmedKey = userKey ? userKey.trim() : '';
+  if (trimmedKey) {
+    return trimmedKey;
+  }
+
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== '') {
+    return process.env.GEMINI_API_KEY.trim();
+  }
+
+  // Fallback to searching Firestore database for our admin user's key
+  try {
+    const db = admin.firestore();
+    const adminEmails = ['minombreesmcfly@gmail.com', 'macfly@gmail.com'];
+    for (const email of adminEmails) {
+      const snap = await db.collection('users').where('email', '==', email).limit(1).get();
+      if (!snap.empty) {
+        const storedKey = snap.docs[0].get('geminiApiKey');
+        if (storedKey && storedKey.trim() !== '') {
+          console.log(`[API] Successfully resolved Gemini API Key from admin profile (${email}) in Firestore.`);
+          return storedKey.trim();
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('[API] Could not resolve admin API key from Firestore:', err.message);
+  }
+
+  throw new Error('Sin clave Gemini configurada en Settings > Secrets o tu perfil de usuario.');
+}
+
 // Error logging to file for easy debugging of server startup or runtime crash
 try {
   fs.writeFileSync(path.join(process.cwd(), 'server-crash.log'), `Server script loaded at ${new Date().toISOString()}\n`);
@@ -129,7 +171,8 @@ async function startServer() {
 
       let gemini;
       try {
-        gemini = getGeminiClient(userApiKey);
+        const resolvedKey = await resolveGeminiApiKey(userApiKey);
+        gemini = getGeminiClientWithKey(resolvedKey);
       } catch (err: any) {
         console.warn(`[API] Gemini client initialization warning: ${err.message}. Using creative preview mode.`);
         return res.json({
@@ -199,7 +242,8 @@ Output ONLY the JSON array, with no markdown code block wraps.`;
 
       let gemini;
       try {
-        gemini = getGeminiClient(userApiKey);
+        const resolvedKey = await resolveGeminiApiKey(userApiKey);
+        gemini = getGeminiClientWithKey(resolvedKey);
       } catch (err: any) {
         throw new Error('Sin clave Gemini configurada en Settings > Secrets o tu perfil de usuario.');
       }
@@ -252,11 +296,13 @@ Modify this photograph based on the following instructions:
 ${outlinesDesc}
 
 CRITICAL STYLING RULES:
-1. Preserve the identity, facial features, hair, poses, and expression of the character in the image as close as possible.
-2. If the instructions specify background properties (like white studio background), camera angles, flash, or outfit styles, apply them while preserving the character's facial and body features.`;
+1. The output must be a highly detailed photograph with a solid, pure, clean, flat white studio background.
+2. The photo style must be a frontal photo with camera flash (light coming directly from the camera direction), framed from the chest, neck, and face up (upper-body portrait close-up).
+3. The character must be wearing clothes (stylish hip-hop outfit style brand "RapLife Records" as described).
+4. Preserve the precise facial features, eye colors, hair style, expression, facial structure, and head accessories of the character in the original picture as close as possible.`;
       } else {
         promptStr = `You are an expert virtual clothing and outfit stylist. 
-Your task is to modify ONLY the clothing of the specified individuals in the uploaded picture (the FIRST image).
+Your task is to modify the clothing of the specified individuals based on the reference garments.
 
 Input image structure:
 - Image #1 (the 1st part) is the original scene containing the characters.
@@ -266,10 +312,10 @@ MODIFICATIONS TO APPLY:
 ${outlinesDesc}
 
 CRITICAL STYLING RULES:
-1. Poses, facial features, expressions, eye colors, mouths, hair, head accessories, hands, body proportions, and background environment must remain 100% IDENTICAL and untouched.
-2. Only change the fabrics, styles, colors, and textures of the apparel (shirts, jackets, hoodies, shoes/sneakers, pants, chains, or hats) worn on the bodies.
-3. The newly generated outfits must match the lighting, perspective, shadows, and overall high-quality realistic photo quality.
-4. Output the newly updated image.`;
+1. The output must be a highly detailed photograph with a solid, pure, clean, flat white studio background.
+2. The photo style must be a frontal photo with camera flash (light coming directly from the camera direction), framed from the chest, neck, and face up (upper-body portrait close-up).
+3. The character must be wearing the clothes/sneakers shown in the reference image(s).
+4. Only change the fabrics, styles, colors, and textures of the apparel worn on the body. Facial features, expressions, nose, eyes, mouths, hair, head accessories, and body proportions of the character must remain 100% untouched and identical to the original image.`;
       }
 
       parts.push({ text: promptStr });

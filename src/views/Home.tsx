@@ -78,9 +78,13 @@ const HomeView = () => {
     const fetchData = async () => {
       try {
         // Fetch Exclusive Registered Artists
-        const qPinned = query(collection(db, 'users'), where('role', '==', 'artist'), limit(12));
-        const snapPinned = await getDocs(qPinned);
-        setPinnedArtists(snapPinned.docs.map(d => ({ id: d.id, ...d.data() })));
+        try {
+          const qPinned = query(collection(db, 'users'), where('role', '==', 'artist'), limit(12));
+          const snapPinned = await getDocs(qPinned);
+          setPinnedArtists(snapPinned.docs.map(d => ({ id: d.id, ...d.data() })));
+        } catch (pinnedErr) {
+          console.warn("[HOME] Failed to fetch exclusive artists (offline fallback):", pinnedErr);
+        }
 
         // Fetch Recent Tracks with robust index fallback
         let tracksList: any[] = [];

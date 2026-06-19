@@ -244,9 +244,13 @@ const Leaderboard = () => {
 
   useEffect(() => {
     const fetchLeaders = async () => {
-      const q = query(collection(db, 'users'), orderBy('highScore', 'desc'), limit(5));
-      const snap = await getDocs(q);
-      setLeaders(snap.docs.map(d => d.data()));
+      try {
+        const q = query(collection(db, 'users'), orderBy('highScore', 'desc'), limit(5));
+        const snap = await getDocs(q);
+        setLeaders(snap.docs.map(d => d.data()));
+      } catch (err) {
+        console.warn("[GAME] Failed to fetch leaderboard offline:", err);
+      }
     };
     fetchLeaders();
   }, []);

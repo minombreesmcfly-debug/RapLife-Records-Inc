@@ -23,9 +23,13 @@ const UploadTrackView = () => {
   React.useEffect(() => {
     const checkCount = async () => {
       if (!user) return;
-      const q = query(collection(db, 'tracks'), where('artistId', '==', user.uid));
-      const snap = await getDocs(q);
-      setTrackCount(snap.docs.length);
+      try {
+        const q = query(collection(db, 'tracks'), where('artistId', '==', user.uid));
+        const snap = await getDocs(q);
+        setTrackCount(snap.docs.length);
+      } catch (err) {
+        console.warn("[UPLOAD] Failed to fetch track count offline:", err);
+      }
     };
     checkCount();
   }, [user]);

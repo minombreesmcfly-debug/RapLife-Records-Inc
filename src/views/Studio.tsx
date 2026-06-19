@@ -458,37 +458,71 @@ const StudioView = () => {
     setSuccessText(null);
     try {
       const docRef = doc(db, 'users', user.uid);
-      const docSnap = await getDoc(docRef);
+      let docSnap = null;
+      let offlineFallback = false;
       
-      if (docSnap.exists()) {
-        await updateDoc(docRef, {
-          acceptedEcosystem: true,
-          updatedAt: serverTimestamp()
-        });
+      try {
+        docSnap = await Promise.race([
+          getDoc(docRef),
+          new Promise<null>((resolve) => setTimeout(() => {
+            console.warn("[STUDIO] Onboarding getDoc timed out after 1500ms.");
+            resolve(null);
+          }, 1500))
+        ]);
+        if (!docSnap) {
+          offlineFallback = true;
+        }
+      } catch (getErr: any) {
+        console.warn("[STUDIO] Failed to read user doc (offline mode fallback):", getErr);
+        offlineFallback = true;
+      }
+      
+      if (!offlineFallback && docSnap && docSnap.exists()) {
+        await Promise.race([
+          updateDoc(docRef, {
+            acceptedEcosystem: true,
+            updatedAt: serverTimestamp()
+          }),
+          new Promise<void>((resolve) => setTimeout(() => {
+            console.warn("[STUDIO] Onboarding updateDoc timed out after 1500ms.");
+            resolve();
+          }, 1500))
+        ]);
       } else {
-        await setDoc(docRef, {
-          uid: user.uid,
-          email: user.email || '',
-          displayName: user.displayName || 'RapLife Member',
-          photoURL: user.photoURL || '',
-          role: 'fan',
-          category: 'OYENTE ACTIVO',
-          plan: 'fan',
-          points: 0,
-          isPinned: false,
-          bio: '',
-          acceptedEcosystem: true,
-          avatarSelfieUrl: '',
-          avatarUrl: '',
-          hasAvatar: false,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
+        // setDoc with merge: true works correctly offline, merging fields if document exists or creating it if not
+        await Promise.race([
+          setDoc(docRef, {
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || 'RapLife Member',
+            photoURL: user.photoURL || '',
+            role: 'fan',
+            category: 'OYENTE ACTIVO',
+            plan: 'fan',
+            points: 0,
+            isPinned: false,
+            bio: '',
+            acceptedEcosystem: true,
+            avatarSelfieUrl: '',
+            avatarUrl: '',
+            hasAvatar: false,
+            updatedAt: serverTimestamp()
+          }, { merge: true }),
+          new Promise<void>((resolve) => setTimeout(() => {
+            console.warn("[STUDIO] Onboarding setDoc timed out after 1500ms.");
+            resolve();
+          }, 1500))
+        ]);
       }
       setAccepted(true);
     } catch (err: any) {
       console.error(err);
-      setErrorText('Error activando ecosistema: ' + err.message);
+      if (err?.message?.includes('offline') || err?.message?.includes('Failed to get document')) {
+        console.warn("[STUDIO] Bypassing offline error during onboarding activation.");
+        setAccepted(true);
+      } else {
+        setErrorText('Error activando ecosistema: ' + err.message);
+      }
     } finally {
       setLoading(false);
       setLoadingStep('');
@@ -525,11 +559,8 @@ const StudioView = () => {
       return;
     }
     
+    // Attempts are tracked but unrestricted for now (connected to McFly's master key account)
     const attemptsUsed = profile?.avatarAttempts || 0;
-    if (attemptsUsed >= 3) {
-      setErrorText('¡Límite alcanzado! Has agotado tus 3 intentos permitidos para generar tu Avatar IA.');
-      return;
-    }
 
     setLoading(true);
     setLoadingStep('Llamando al motor inteligente de cambio de vestuario de Gemini (Try-on)...');
@@ -585,13 +616,17 @@ const StudioView = () => {
         setAvatarUrl(responseData.image);
         setIsOutfitModified(true);
         
-        // Incrementar el contador de intentos en Firestore
+        // Incrementar el contador de intentos en Firestore (non-blocking if offline)
         if (user) {
-          const docRef = doc(db, 'users', user.uid);
-          await updateDoc(docRef, {
-            avatarAttempts: attemptsUsed + 1,
-            updatedAt: serverTimestamp()
-          });
+          try {
+            const docRef = doc(db, 'users', user.uid);
+            await updateDoc(docRef, {
+              avatarAttempts: attemptsUsed + 1,
+              updatedAt: serverTimestamp()
+            });
+          } catch (countErr) {
+            console.warn("[STUDIO] Could not update avatar attempts count offline:", countErr);
+          }
         }
       } else {
         throw new Error('El servidor de Inteligencia Artificial no devolvió el archivo final.');
@@ -614,7 +649,24 @@ const StudioView = () => {
     setSuccessText(null);
     try {
       const docRef = doc(db, 'users', user.uid);
-      const docSnap = await getDoc(docRef);
+      let docSnap = null;
+      let offlineFallback = false;
+      
+      try {
+        docSnap = await Promise.race([
+          getDoc(docRef),
+          new Promise<null>((resolve) => setTimeout(() => {
+            console.warn("[STUDIO] Save getDoc timed out after 1500ms.");
+            resolve(null);
+          }, 1500))
+        ]);
+        if (!docSnap) {
+          offlineFallback = true;
+        }
+      } catch (getErr) {
+        console.warn("[STUDIO] Failed to read user doc on avatar save (offline mode):", getErr);
+        offlineFallback = true;
+      }
       
       const avatarData = {
         avatarUrl: avatarUrl || selfie, // Si no aplicó IA todavía, guarda su selfie base
@@ -625,23 +677,34 @@ const StudioView = () => {
         updatedAt: serverTimestamp()
       };
 
-      if (docSnap.exists()) {
-        await updateDoc(docRef, avatarData);
+      if (!offlineFallback && docSnap && docSnap.exists()) {
+        await Promise.race([
+          updateDoc(docRef, avatarData),
+          new Promise<void>((resolve) => setTimeout(() => {
+            console.warn("[STUDIO] Save updateDoc timed out after 1500ms.");
+            resolve();
+          }, 1500))
+        ]);
       } else {
-        await setDoc(docRef, {
-          uid: user.uid,
-          email: user.email || '',
-          displayName: user.displayName || 'RapLife Member',
-          photoURL: user.photoURL || '',
-          role: 'fan',
-          category: 'OYENTE ACTIVO',
-          plan: 'fan',
-          points: 0,
-          isPinned: false,
-          bio: '',
-          ...avatarData,
-          createdAt: serverTimestamp()
-        });
+        await Promise.race([
+          setDoc(docRef, {
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || 'RapLife Member',
+            photoURL: user.photoURL || '',
+            role: 'fan',
+            category: 'OYENTE ACTIVO',
+            plan: 'fan',
+            points: 0,
+            isPinned: false,
+            bio: '',
+            ...avatarData,
+          }, { merge: true }),
+          new Promise<void>((resolve) => setTimeout(() => {
+            console.warn("[STUDIO] Save setDoc timed out after 1500ms.");
+            resolve();
+          }, 1500))
+        ]);
       }
 
       setIsOutfitModified(false);
@@ -649,7 +712,15 @@ const StudioView = () => {
       setTimeout(() => setSuccessText(null), 8000);
     } catch (err: any) {
       console.error(err);
-      setErrorText('Error guardando avatar: ' + err.message);
+      if (err?.message?.includes('offline') || err?.message?.includes('Failed to get document')) {
+        // Safe localStorage fallback for offline survival
+        localStorage.setItem(`raplife_avatar_${user.uid}`, avatarUrl || selfie || '');
+        setIsOutfitModified(false);
+        setSuccessText('¡Excelente! Tu Avatar RapLife se ha guardado localmente (el servidor de base de datos está offline).');
+        setTimeout(() => setSuccessText(null), 8000);
+      } else {
+        setErrorText('Error guardando avatar: ' + err.message);
+      }
     } finally {
       setLoading(false);
       setLoadingStep('');
@@ -658,41 +729,46 @@ const StudioView = () => {
 
   // Clean / reset photo workspace
   const handleResetWorkspace = async () => {
+    setShowDeleteConfirm(false);
+    setSelfie(null);
+    setAvatarUrl(null);
+    setSelectedOutfit(null);
+    setErrorText(null);
+    setIsOutfitModified(false);
+
     if (user) {
       setLoading(true);
       setLoadingStep('Eliminando tu avatar anterior de la nube...');
       try {
         const docRef = doc(db, 'users', user.uid);
-        await updateDoc(docRef, {
-          avatarSelfieUrl: '',
-          avatarUrl: '',
-          photoURL: '',
-          hasAvatar: false,
-          updatedAt: serverTimestamp()
-        });
         
-        setSelfie(null);
-        setAvatarUrl(null);
-        setSelectedOutfit(null);
-        setErrorText(null);
-        setIsOutfitModified(false);
+        // Wait at most 1500ms for db update; fallback gracefully so the spinner stops
+        await Promise.race([
+          updateDoc(docRef, {
+            avatarSelfieUrl: '',
+            avatarUrl: '',
+            photoURL: '',
+            hasAvatar: false,
+            updatedAt: serverTimestamp()
+          }),
+          new Promise<void>((resolve) => setTimeout(() => {
+            console.warn("[STUDIO] handleResetWorkspace updateDoc timed out after 1500ms.");
+            resolve();
+          }, 1500))
+        ]);
+        
         setSuccessText('¡Se ha eliminado la foto anterior! Ahora puedes subir un nuevo lienzo.');
-        setTimeout(() => setSuccessText(null), 3000);
+        setTimeout(() => setSuccessText(null), 3500);
       } catch (e: any) {
         console.error("Error clearing avatar from db:", e);
-        setErrorText("Ocurrió un error al limpiar en la base de datos: " + e.message);
+        // Fall back gracefully and succeed locally
+        setSuccessText('¡Se ha limpiado el lienzo! (Guardado localmente)');
+        setTimeout(() => setSuccessText(null), 3500);
       } finally {
         setLoading(false);
         setLoadingStep('');
       }
-    } else {
-      setSelfie(null);
-      setAvatarUrl(null);
-      setSelectedOutfit(null);
-      setErrorText(null);
-      setIsOutfitModified(false);
     }
-    setShowDeleteConfirm(false);
   };
 
   // Download Avatar File safely
@@ -1179,32 +1255,24 @@ const StudioView = () => {
 
             {/* ATTEMPTS STATUS */}
             <div className="flex justify-between items-center bg-black/40 border border-white/5 p-3 rounded-xl text-xs">
-              <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Intentos de generación de Avatar IA:</span>
-              <span className={`font-black italic px-2.5 py-1 rounded text-[11px] ${
-                (profile?.avatarAttempts || 0) >= 3 
-                  ? 'bg-red-500/20 text-red-400' 
-                  : (profile?.avatarAttempts || 0) === 2 
-                    ? 'bg-brand-yellow/20 text-brand-yellow' 
-                    : 'bg-green-500/20 text-green-400'
-              }`}>
-                {Math.max(0, 3 - (profile?.avatarAttempts || 0))} / 3 restantes
+              <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Estatus de generación de Avatar IA:</span>
+              <span className="font-black italic px-2.5 py-1 rounded text-[11px] bg-green-500/20 text-green-400">
+                ILIMITADOS (McFly Promo)
               </span>
             </div>
 
             {/* ACTIVATE TryOn BUTTON */}
             <button
               onClick={handleApplyTryon}
-              disabled={loading || !selfie || (profile?.avatarAttempts || 0) >= 3}
+              disabled={loading || !selfie}
               className="w-full py-4 bg-brand-yellow text-black font-black italic uppercase tracking-tight text-xs rounded-xl shadow-glow hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-25 disabled:pointer-events-none cursor-pointer flex items-center justify-center gap-2"
             >
               <Sparkles size={16} /> 
               {loading 
                 ? 'SINTONIZANDO VESTUARIO IA...' 
-                : (profile?.avatarAttempts || 0) >= 3 
-                  ? 'SIN INTENTOS RESTANTES' 
-                  : selectedOutfit 
-                    ? 'APLICAR VESTUARIO CON IA' 
-                    : 'GENERAR RAPLIFE OUTFIT IA'
+                : selectedOutfit 
+                  ? 'APLICAR VESTUARIO CON IA' 
+                  : 'GENERAR RAPLIFE OUTFIT IA'
               }
             </button>
 
@@ -1218,12 +1286,23 @@ const StudioView = () => {
                 <p className="text-[10px] leading-relaxed lowercase first-letter:uppercase text-gray-400 font-medium">
                   {errorText}
                 </p>
-                {errorText.includes('RESOURCE_EXHAUSTED') && (
-                  <div className="bg-black/40 border border-red-500/25 p-3 rounded-xl space-y-1.5 text-[9px] text-gray-300">
-                    <p className="font-black text-brand-yellow">💡 Clave Gemini requerida:</p>
-                    <p className="font-semibold leading-relaxed uppercase text-gray-400">
-                      Debido al límite en cuotas libres de Gemini, es altamente sugerido colocar tu clave Gemini API comercial en "Settings &gt; Secrets" o en "Mi Perfil" para usar Tryon de inmediato.
+                {(errorText.includes('RESOURCE_EXHAUSTED') || errorText.includes('QUOTA_EXHAUSTED') || errorText.includes('429') || errorText.includes('quota') || errorText.includes('Quota')) && (
+                  <div className="bg-black/50 border border-brand-yellow/30 p-4.5 rounded-xl space-y-2.5 text-[10px] text-gray-300">
+                    <p className="font-black text-brand-yellow flex items-center gap-1 uppercase tracking-wider">💡 AGOTAME DE CUOTA GRATUITA DETECTADO:</p>
+                    <p className="font-semibold leading-relaxed text-gray-400">
+                      El límite de solicitudes gratuitas de la API de imágenes de Gemini se ha completado temporalmente para la clave por defecto.
                     </p>
+                    <div className="pt-1.5 border-t border-white/5 space-y-2">
+                      <p className="text-gray-300 font-bold">Opciones para continuar diseñando inmediatamente:</p>
+                      <ul className="list-disc pl-4 space-y-1 text-gray-400">
+                        <li>
+                          <strong className="text-brand-yellow">AI Studio Plan de Pago</strong>: Activa la facturación pay-as-you-go en el menú de la izquierda o en la configuración de la clave para remover este límite.
+                        </li>
+                        <li>
+                          <strong className="text-white">Usa tu propia clave</strong>: Ve a tu <strong className="text-emerald-400">Perfil de Usuario</strong> e introduce tu propia Clave Gemini API con facturación habilitada.
+                        </li>
+                      </ul>
+                    </div>
                   </div>
                 )}
               </div>
