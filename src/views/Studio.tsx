@@ -795,18 +795,8 @@ const StudioView = () => {
     document.body.removeChild(link);
   };
 
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center p-12 min-h-[70vh] text-center">
-        <DiscIconAnimate />
-        <h1 className="text-2xl font-black italic uppercase tracking-tighter mt-4 text-red-500">DEBES CONECTAR TU CUENTA</h1>
-        <p className="text-gray-500 font-bold uppercase tracking-widest text-xs mt-2">Inicia sesión en la barra superior para acceder a tu avatar.</p>
-      </div>
-    );
-  }
-
-  // ONBOARDING / DECLINED ACCEPTANCE VIEW
-  if (!accepted) {
+  // ONBOARDING / DECLINED ACCEPTANCE VIEW (only for logged-in users who haven't accepted yet)
+  if (user && !accepted) {
     return (
       <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-8 pb-20 py-10 md:py-16">
         <motion.div 
@@ -883,6 +873,17 @@ const StudioView = () => {
   // MAIN RUNTIME WORKSPACE VIEW
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 pb-32">
+      
+      {/* GUEST ACCESS WARNING BANNER */}
+      {!user && (
+        <div className="bg-red-500/10 border-2 border-red-500/20 p-6 md:p-8 rounded-[2rem] text-center max-w-4xl mx-auto flex flex-col items-center gap-2.5 animate-pulse">
+          <AlertTriangle className="text-red-500 shrink-0" size={28} />
+          <h2 className="text-sm font-black italic uppercase tracking-wider text-red-500">MODO INVITADO: ACCESO RESTRINGIDO AL AVATAR</h2>
+          <p className="text-[10.5px] text-gray-400 font-bold uppercase tracking-wider max-w-2xl leading-relaxed">
+            Sintonizando en modo de vista previa. Puedes explorar y sintonizar la radio, pero para poder subir selfies, personalizar prendas con Inteligencia Artificial, guardar tu Avatar Oficial o acumular récords, debes conectar tu cuenta en la barra superior.
+          </p>
+        </div>
+      )}
       
       {/* BRANDING HEADER */}
       <header className="flex flex-col md:flex-row items-center gap-6 bg-white/5 p-6 md:p-8 rounded-[2.5rem] border border-white/10 boombox-texture">

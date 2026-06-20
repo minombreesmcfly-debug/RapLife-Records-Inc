@@ -235,6 +235,32 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           console.warn("[RADIO] Approved/legacy db tracks fetch error:", dbErr);
         }
 
+        // 3. Fallback to premium default tracks if both disk and db collections are empty
+        if (!locals || locals.length === 0) {
+          locals = [
+            {
+              id: 'default_track_raplife_records',
+              title: 'Ghetto Anthem',
+              artistId: 'mcfly',
+              artistName: 'McFly',
+              audioUrl: '/assets/radio/RapLife Records (1).mp3',
+              coverUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=200&auto=format&fit=crop',
+              isRadioInterstitial: false,
+              fullName: 'RapLife Records (1).mp3'
+            },
+            {
+              id: 'default_track_soundhelix_1',
+              title: 'SoundHelix Orbit Beat',
+              artistId: 'raplife_records',
+              artistName: 'RAPLIFE RADIO',
+              audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+              coverUrl: '/assets/player_idle.png',
+              isRadioInterstitial: false,
+              fullName: 'SoundHelix-Song-1.mp3'
+            }
+          ];
+        }
+
         if (locals && locals.length > 0) {
           // Check if there is configured play order
           let order: string[] = [];
@@ -312,6 +338,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         if (initial) {
           setCurrentTrack(initial);
+          setPlaylist(prev => {
+            if (prev.length === 0) {
+              return [initial!];
+            }
+            return prev;
+          });
           setCurrentTime(0);
           setDuration(0);
           if (audioRef.current) {

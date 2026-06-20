@@ -381,12 +381,10 @@ const AppContent = () => {
                   <span className="hidden md:inline">SUBIR</span>
                 </Link>
               )}
-              {user && (
-                <Link to="/studio" className="chrome-button flex items-center gap-1 md:gap-2 px-2 py-1.5 md:px-4 md:py-3 rounded-lg md:rounded-xl text-black font-black uppercase text-[8px] md:text-[10px] shadow-lg hover:scale-105 transition-all">
-                  <User size={11} />
-                  <span className="hidden md:inline">AVATAR RAPLIFE</span>
-                </Link>
-              )}
+              <Link to="/studio" className="chrome-button flex items-center gap-1 md:gap-2 px-2 py-1.5 md:px-4 md:py-3 rounded-lg md:rounded-xl text-black font-black uppercase text-[8px] md:text-[10px] shadow-lg hover:scale-105 transition-all">
+                <User size={11} />
+                <span className="hidden md:inline">AVATAR RAPLIFE</span>
+              </Link>
               {isAdmin && (
                 <Link to="/admin" className="chrome-button flex items-center gap-1 md:gap-2 px-2 py-1.5 md:px-4 md:py-3 rounded-lg md:rounded-xl text-black font-black uppercase text-[8px] md:text-[10px] shadow-lg hover:scale-105 transition-all">
                   <ShieldCheck size={11} />
