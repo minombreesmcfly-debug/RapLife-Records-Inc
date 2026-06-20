@@ -27,54 +27,19 @@ const PLACEHOLDER_SPONSOR: SponsoredArtist = {
   instagramUrl: '#'
 };
 
-const DEFAULT_CAROUSEL_FALLBACKS: SponsoredArtist[] = [
-  {
-    id: 'artist_mcfly_emece',
-    displayName: 'McFly',
-    role: 'artist',
-    category: 'STAFF DIRECTO',
-    bio: 'Productor y artista oficial de RapLife Records. Revolucionando el sonido del ghetto.',
-    photoURL: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=600&auto=format&fit=crop',
-    spotifyUrl: 'https://open.spotify.com/artist/4Y79Nbyv5Bovb2Zf70vL4g',
-    instagramUrl: '#',
-    isPinned: true
-  },
-  {
-    id: 'artist_kase_o',
-    displayName: 'Kase-O',
-    role: 'artist',
-    category: 'LEYENDA URBANA',
-    bio: 'Líder legendario del rap hispanohablante. Trayecto histórico y puro flow.',
-    photoURL: 'https://images.unsplash.com/photo-1601643143482-96cb344070fb?q=80&w=600&auto=format&fit=crop',
-    spotifyUrl: '',
-    instagramUrl: '#',
-    isPinned: true
-  },
-  {
-    id: 'artist_vandal_crew',
-    displayName: 'Vandal Crew',
-    role: 'artist',
-    category: 'STREET WEAR',
-    bio: 'El colectivo oficial de graffiti y rap hardcore underground de RapLife Records.',
-    photoURL: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=600&auto=format&fit=crop',
-    spotifyUrl: '',
-    instagramUrl: '#',
-    isPinned: true
-  }
-];
-
 export default function SponsoredCarousel() {
   const { profile } = useAuth();
   const [artists, setArtists] = useState<SponsoredArtist[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [autoplay, setAutoplay] = useState(true);
 
-  // Load pinned or exclusive artists from db to supplement!
+  // Load all artists with role 'artist' from db
   useEffect(() => {
     const fetchArtists = async () => {
       try {
         const q = query(
           collection(db, 'users'),
+          where('role', '==', 'artist'),
           limit(100)
         );
         const snap = await getDocs(q);
@@ -83,25 +48,20 @@ export default function SponsoredCarousel() {
         if (!snap.empty) {
           snap.docs.forEach(doc => {
             const data = doc.data();
-            const isPinned = data.isPinned === true;
             const isExclusive = data.isExclusive !== false; // defaults to true
             
-            // We should use artists that are exclusive and pinned. Those are the ones that should appear on the slides.
-            if (isPinned) {
-              dbArtists.push({
-                id: doc.id,
-                displayName: data.displayName || 'Artista Sin Nombre',
-                role: data.role || 'artist',
-                category: data.category || (isExclusive ? 'EXCLUSIVO RAPLIFE' : 'DESTACADO RAPLIFE'),
-                bio: data.bio || 'Exclusivo artista independiente asociado al sello discográfico.',
-                photoURL: data.photoURL || data.avatarUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
-                spotifyUrl: data.spotifyUrl || '',
-                instagramUrl: data.instagramUrl || '',
-                isPinned: true,
-                isExclusive: isExclusive,
-                createdAt: data.createdAt
-              } as any);
-            }
+            dbArtists.push({
+              id: doc.id,
+              displayName: data.displayName || 'Artista Sin Nombre',
+              role: 'artist',
+              category: data.category || (isExclusive ? 'EXCLUSIVO RAPLIFE' : 'DESTACADO RAPLIFE'),
+              bio: data.bio || 'Exclusivo artista independiente asociado al sello discográfico.',
+              photoURL: data.photoURL || data.avatarUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
+              spotifyUrl: data.spotifyUrl || '',
+              instagramUrl: data.instagramUrl || '',
+              isExclusive: isExclusive,
+              createdAt: data.createdAt
+            } as any);
           });
 
           // Sort db artists: Newer (by createdAt) first
@@ -114,15 +74,10 @@ export default function SponsoredCarousel() {
           console.log("[CAROUSEL] Successfully loaded database artists:", dbArtists.map(a => a.displayName));
         }
 
-        // Use custom dynamic artists in Firestore. If empty, fall back to default artists!
-        if (dbArtists.length > 0) {
-          setArtists(dbArtists);
-        } else {
-          setArtists(DEFAULT_CAROUSEL_FALLBACKS);
-        }
+        setArtists(dbArtists);
       } catch (e) {
         console.warn("[CAROUSEL] Database fetch error:", e);
-        setArtists(DEFAULT_CAROUSEL_FALLBACKS);
+        setArtists([]);
       }
     };
     fetchArtists();
