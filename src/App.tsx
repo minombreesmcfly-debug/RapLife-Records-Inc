@@ -175,8 +175,8 @@ const MobileNav = () => (
   </div>
 );
 
-const SectionHeader = ({ title, icon: Icon }: { title: string, icon: any }) => (
-  <div className="flex items-center gap-3 md:gap-4 mb-6 md:mb-10 border-b-4 border-black pb-4">
+const SectionHeader = ({ title, icon: Icon, center = true }: { title: string, icon: any, center?: boolean }) => (
+  <div className={`flex items-center gap-3 md:gap-4 mb-6 md:mb-10 border-b-4 border-black pb-4 ${center ? 'justify-center' : ''}`}>
     <div className="p-2 md:p-3 bg-brand-yellow text-black rounded-xl rotate-3 shadow-lg flex-shrink-0"><Icon size={20} /></div>
     <h2 className="text-2xl md:text-4xl font-black italic uppercase tracking-tighter glow-yellow truncate">{title}</h2>
   </div>
@@ -223,7 +223,7 @@ const RadioStrip = () => {
 const LandingPage = () => (
   <div className="max-w-6xl mx-auto px-2 md:px-0 pt-4 md:pt-6 space-y-20 md:space-y-32">
     {/* PORTADA PRINCIPAL DE ARTISTAS DESTACADOS */}
-    <div className="bg-black/40 border-4 border-boombox-gray rounded-[2.5rem] md:rounded-[3rem] overflow-hidden shadow-2xl relative boombox-texture">
+    <div className="bg-black/45 md:bg-black/40 border-2 md:border-4 border-boombox-gray rounded-2xl md:rounded-[3rem] overflow-hidden shadow-2xl relative boombox-texture">
       <SponsoredCarousel />
     </div>
 
