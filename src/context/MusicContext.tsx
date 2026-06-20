@@ -316,42 +316,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setDuration(0);
           if (audioRef.current) {
             audioRef.current.src = initial.audioUrl;
-            audioRef.current.autoplay = true;
-            
-            // Try autoplay right away
-            const promise = audioRef.current.play();
-            if (promise !== undefined) {
-              playPromiseRef.current = promise;
-              promise.then(() => {
-                setIsPlaying(true);
-              }).catch(err => {
-                console.warn("[RADIO] Autoplay blocked, wait for user interaction helper:", err);
-                
-                // Play as soon as user interacts anywhere to bypass Google/Apple autoplay block
-                const startPlayOnFirstInteraction = () => {
-                  if (audioRef.current) {
-                    audioRef.current.play()
-                      .then(() => {
-                        setIsPlaying(true);
-                        cleanup();
-                      })
-                      .catch(e => console.warn("[RADIO] Still blocked on interaction:", e));
-                  }
-                };
-                
-                const cleanup = () => {
-                  window.removeEventListener('click', startPlayOnFirstInteraction);
-                  window.removeEventListener('touchstart', startPlayOnFirstInteraction);
-                  window.removeEventListener('keydown', startPlayOnFirstInteraction);
-                  window.removeEventListener('scroll', startPlayOnFirstInteraction);
-                };
-                
-                window.addEventListener('click', startPlayOnFirstInteraction);
-                window.addEventListener('touchstart', startPlayOnFirstInteraction);
-                window.addEventListener('keydown', startPlayOnFirstInteraction);
-                window.addEventListener('scroll', startPlayOnFirstInteraction);
-              });
-            }
+            audioRef.current.autoplay = false;
+            setIsPlaying(false);
           }
         }
       } catch (err) {

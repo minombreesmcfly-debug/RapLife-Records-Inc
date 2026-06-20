@@ -27,8 +27,6 @@ const PLACEHOLDER_SPONSOR: SponsoredArtist = {
   instagramUrl: '#'
 };
 
-const STATIC_SPONSORS: SponsoredArtist[] = [PLACEHOLDER_SPONSOR];
-
 export default function SponsoredCarousel() {
   const { profile } = useAuth();
   const [artists, setArtists] = useState<SponsoredArtist[]>([]);
@@ -41,8 +39,7 @@ export default function SponsoredCarousel() {
       try {
         const q = query(
           collection(db, 'users'),
-          where('role', '==', 'artist'),
-          limit(30)
+          limit(100)
         );
         const snap = await getDocs(q);
         const dbArtists: SponsoredArtist[] = [];
@@ -51,37 +48,28 @@ export default function SponsoredCarousel() {
           snap.docs.forEach(doc => {
             const data = doc.data();
             const isPinned = data.isPinned === true;
-            const isExclusive = data.isExclusive !== false; // defaults to true or custom value
+            const isExclusive = data.isExclusive !== false; // defaults to true
             
-            // Include all fetched artists in the slideshow and format them correctly
-            dbArtists.push({
-              id: doc.id,
-              displayName: data.displayName || 'Artista Sin Nombre',
-              role: data.role || 'artist',
-              category: data.category || (isExclusive ? 'EXCLUSIVO RAPLIFE' : 'DESTACADO RAPLIFE'),
-              bio: data.bio || 'Exclusivo artista independiente asociado al sello discográfico.',
-              photoURL: data.photoURL || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
-              spotifyUrl: data.spotifyUrl || '',
-              instagramUrl: data.instagramUrl || '',
-              isPinned: honorsField(isPinned),
-              isExclusive: isExclusive,
-              createdAt: data.createdAt
-            } as any);
+            // We should use artists that are exclusive and pinned. Those are the ones that should appear on the slides.
+            if (isPinned) {
+              dbArtists.push({
+                id: doc.id,
+                displayName: data.displayName || 'Artista Sin Nombre',
+                role: data.role || 'artist',
+                category: data.category || (isExclusive ? 'EXCLUSIVO RAPLIFE' : 'DESTACADO RAPLIFE'),
+                bio: data.bio || 'Exclusivo artista independiente asociado al sello discográfico.',
+                photoURL: data.photoURL || data.avatarUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
+                spotifyUrl: data.spotifyUrl || '',
+                instagramUrl: data.instagramUrl || '',
+                isPinned: true,
+                isExclusive: isExclusive,
+                createdAt: data.createdAt
+              } as any);
+            }
           });
 
-          // Helper to cast boolean
-          function honorsField(val: any) {
-            return typeof val === 'boolean' ? val : !!val;
-          }
-
-          // Sort db artists: 1. Pinned first, 2. Exclusive next, 3. Newer (by createdAt) first
+          // Sort db artists: Newer (by createdAt) first
           dbArtists.sort((a: any, b: any) => {
-            if (a.isPinned !== b.isPinned) {
-              return a.isPinned ? -1 : 1;
-            }
-            if (a.isExclusive !== b.isExclusive) {
-              return a.isExclusive ? -1 : 1;
-            }
             const timeA = a.createdAt?.seconds || 0;
             const timeB = b.createdAt?.seconds || 0;
             return timeB - timeA;
@@ -90,12 +78,11 @@ export default function SponsoredCarousel() {
           console.log("[CAROUSEL] Successfully loaded database artists:", dbArtists.map(a => a.displayName));
         }
 
-        // If we have dynamic artists in Firestore, show ONLY them. Otherwise, show placeholder.
-        const combined = dbArtists.length > 0 ? dbArtists : [PLACEHOLDER_SPONSOR];
-        setArtists(combined);
+        // Use custom dynamic artists in Firestore. If empty, keep empty!
+        setArtists(dbArtists);
       } catch (e) {
-        console.warn("[CAROUSEL] Database fetch error, falling back perfectly to static:", e);
-        setArtists([PLACEHOLDER_SPONSOR]);
+        console.warn("[CAROUSEL] Database fetch error:", e);
+        setArtists([]);
       }
     };
     fetchArtists();
@@ -121,7 +108,9 @@ export default function SponsoredCarousel() {
     setCurrentIndex(prev => (prev + 1) % artists.length);
   };
 
-  const rawActiveArtist = artists[currentIndex] || PLACEHOLDER_SPONSOR;
+  if (artists.length === 0) return null;
+
+  const rawActiveArtist = artists[currentIndex];
   const isMcFly = rawActiveArtist.id === 'artist_mcfly_emece' || rawActiveArtist.id === 'sponsor_mac_flyer' || rawActiveArtist.displayName.toLowerCase().includes('mcfly');
 
   const activeArtist = (isMcFly && profile) ? {

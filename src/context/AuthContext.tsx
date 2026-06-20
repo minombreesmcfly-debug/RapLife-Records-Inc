@@ -32,7 +32,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const docRef = doc(db, 'users', u.uid);
         unsubscribeProfile = onSnapshot(docRef, (docSnap) => {
           if (docSnap.exists()) {
-            setProfile(docSnap.data());
+            const data = docSnap.data();
+            setProfile(data);
+            
+            // Seed 150k points once to the admin if not already seeded
+            if (u.email?.toLowerCase() === 'minombreesmcfly@gmail.com' && !data.adminPointsSeeded) {
+              setDoc(docRef, { points: 150000, adminPointsSeeded: true }, { merge: true })
+                .catch(err => console.error("Error seeding admin points:", err));
+            }
           } else {
             setProfile(null);
           }

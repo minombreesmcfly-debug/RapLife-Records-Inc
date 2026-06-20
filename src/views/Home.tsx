@@ -49,6 +49,48 @@ const PROM_SERVICES = [
   }
 ];
 
+const DEFAULT_FALLBACK_ARTISTS = [
+  {
+    id: 'mcfly',
+    displayName: 'McFly',
+    role: 'artist',
+    isExclusive: true,
+    photoURL: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop',
+    bio: 'Productor y artista oficial de RapLife Records. Revolucionando el sonido del ghetto.',
+    category: 'STAFF DIRECTO'
+  },
+  {
+    id: 'kase_o',
+    displayName: 'Kase-O',
+    role: 'artist',
+    isExclusive: true,
+    photoURL: 'https://images.unsplash.com/photo-1601643143482-96cb344070fb?q=80&w=400&auto=format&fit=crop',
+    bio: 'Líder legendario del rap hispanohablante. Trayecto histórico y puro flow.',
+    category: 'LEYENDA URBANA'
+  },
+  {
+    id: 'vandal',
+    displayName: 'Vandal Crew',
+    role: 'artist',
+    isExclusive: true,
+    photoURL: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop',
+    bio: 'El colectivo oficial de graffiti y rap hardcore underground de RapLife Records.',
+    category: 'STREET WEAR'
+  }
+];
+
+const DEFAULT_FALLBACK_TRACKS = [
+  {
+    id: 'track1',
+    title: 'Ghetto Anthem',
+    artistId: 'mcfly',
+    artistName: 'McFly',
+    audioUrl: '/assets/radio/RapLife Records (1).mp3',
+    coverUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=200&auto=format&fit=crop',
+    isRadioInterstitial: false
+  }
+];
+
 const HomeView = () => {
   const { profile } = useAuth();
   const { play } = useMusic();
@@ -81,9 +123,15 @@ const HomeView = () => {
         try {
           const qPinned = query(collection(db, 'users'), where('role', '==', 'artist'), limit(12));
           const snapPinned = await getDocs(qPinned);
-          setPinnedArtists(snapPinned.docs.map(d => ({ id: d.id, ...d.data() })));
+          const mappedArtists = snapPinned.docs.map(d => ({ id: d.id, ...d.data() }));
+          if (mappedArtists.length > 0) {
+            setPinnedArtists(mappedArtists);
+          } else {
+            setPinnedArtists(DEFAULT_FALLBACK_ARTISTS);
+          }
         } catch (pinnedErr) {
           console.warn("[HOME] Failed to fetch exclusive artists (offline fallback):", pinnedErr);
+          setPinnedArtists(DEFAULT_FALLBACK_ARTISTS);
         }
 
         // Fetch Recent Tracks with robust index fallback
@@ -105,9 +153,11 @@ const HomeView = () => {
           });
           tracksList = tracksList.slice(0, 10);
         }
-        setRecentTracks(tracksList);
+        setRecentTracks(tracksList.length > 0 ? tracksList : DEFAULT_FALLBACK_TRACKS);
       } catch (e) {
         console.error("Error fetching home data:", e);
+        setPinnedArtists(DEFAULT_FALLBACK_ARTISTS);
+        setRecentTracks(DEFAULT_FALLBACK_TRACKS);
       }
     };
     fetchData();

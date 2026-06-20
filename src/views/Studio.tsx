@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { db, auth } from '../lib/firebase';
-import { doc, updateDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, getDoc, setDoc, increment } from 'firebase/firestore';
 import { 
   Upload, Sparkles, RefreshCw, Undo, ArrowLeft, Check, 
   AlertTriangle, Download, Trash2, Image as ImageIcon, 
   Shirt, Eye, Save, User, Info, HelpCircle, ChevronRight, CheckCircle2,
   Mic, MicOff, Play, Square, Circle, Sliders, Music, Volume2, VolumeX, Disc, HelpCircle as Help,
-  Camera, Video, VideoOff
+  Camera, Video, VideoOff, X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -279,6 +279,7 @@ const StudioView = () => {
   const [genderFilter, setGenderFilter] = useState<'male' | 'female'>('male');
   const [selectedOutfit, setSelectedOutfit] = useState<PredefinedOutfit | null>(null);
   const [isOutfitModified, setIsOutfitModified] = useState(false);
+  const [showOutfitsModal, setShowOutfitsModal] = useState<boolean>(false);
 
   // IA process states
   const [loading, setLoading] = useState<boolean>(false);
@@ -554,8 +555,18 @@ const StudioView = () => {
   const handleApplyTryon = async () => {
     setErrorText(null);
     setSuccessText(null);
+    if (!user) {
+      setErrorText('Primero debes iniciar sesión para crear tu Avatar RapLife con IA (cuesta 5,000 PTS).');
+      return;
+    }
     if (!selfie) {
       setErrorText('Primero debes subir tu selfie o foto real.');
+      return;
+    }
+
+    const currentPts = profile?.points || 0;
+    if (currentPts < 5000) {
+      setErrorText(`Crear tu Avatar RapLife con IA cuesta 5,000 PTS. Tu saldo actual: ${currentPts.toLocaleString()} PTS. ¡Juega al RapLife Arcade para ganar más puntos!`);
       return;
     }
     
@@ -616,16 +627,17 @@ const StudioView = () => {
         setAvatarUrl(responseData.image);
         setIsOutfitModified(true);
         
-        // Incrementar el contador de intentos en Firestore (non-blocking if offline)
+        // Incrementar el contador de intentos y deducir 5,000 puntos en Firestore (non-blocking if offline)
         if (user) {
           try {
             const docRef = doc(db, 'users', user.uid);
             await updateDoc(docRef, {
               avatarAttempts: attemptsUsed + 1,
+              points: increment(-5000), // Deducir los 5,000 puntos
               updatedAt: serverTimestamp()
             });
           } catch (countErr) {
-            console.warn("[STUDIO] Could not update avatar attempts count offline:", countErr);
+            console.warn("[STUDIO] Could not update avatar attempts count and points offline:", countErr);
           }
         }
       } else {
@@ -888,11 +900,11 @@ const StudioView = () => {
         </div>
       </header>
 
-      {/* CORE WORKSPACE GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      {/* CORE WORKSPACE - CENTERED MAX WIDTH SINGLE COLUMN */}
+      <div className="max-w-4xl mx-auto w-full">
         
-        {/* LIENZO DE RETOQUE & VISUALIZER (7 columns) */}
-        <div className="lg:col-span-7 flex flex-col gap-6">
+        {/* LIENZO DE RETOQUE & VISUALIZER */}
+        <div className="flex flex-col gap-6">
           <div className="bg-brand-dark p-6 rounded-[2rem] border-4 border-boombox-gray flex flex-col relative overflow-hidden group">
             
             <div className="flex items-center justify-between mb-4 z-10 border-b border-white/5 pb-3">
@@ -1063,7 +1075,96 @@ const StudioView = () => {
                   </div>
                 </div>
 
-                {/* LIENZO DE RETOQUE FOOTER BUTTONS */}
+                {/* BRAND-NEW OUTFITS CONTROL PANEL AND IA BUTTONS RIGHT BELOW PHOTO PREVIEW */}
+                <div className="bg-black/35 p-5 rounded-2xl border border-white/5 space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="space-y-1 text-left">
+                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">OUTFIT DE VESTUARIO SELECCIONADO:</div>
+                      {selectedOutfit ? (
+                        <div className="flex items-center gap-2.5">
+                          <img 
+                            src={`/assets/outfits/${selectedOutfit.filename}`} 
+                            onError={(e) => { e.currentTarget.src = selectedOutfit.fallbackUrl; }}
+                            className="w-10 h-10 rounded-lg object-cover border border-white/10" 
+                            alt={selectedOutfit.name} 
+                          />
+                          <div>
+                            <div className="text-xs font-black text-brand-yellow uppercase italic tracking-wider">{selectedOutfit.name}</div>
+                            <div className="text-[9.5px] text-gray-400 font-semibold uppercase">{selectedOutfit.description.slice(0, 75)}...</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <div className="w-10 h-10 rounded-lg bg-black/50 border border-dashed border-white/10 flex items-center justify-center text-brand-yellow text-xs">👕</div>
+                          <div>
+                            <div className="text-xs font-black text-gray-400 uppercase italic tracking-wider">Sin outfit seleccionado</div>
+                            <div className="text-[9.5px] text-gray-500 font-semibold uppercase">Estilo Y2K Premium (Por defecto)</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* DYNAMIC ACTION BUTTON CLUSTER */}
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0 w-full sm:w-auto">
+                      <button 
+                        type="button"
+                        onClick={() => setShowOutfitsModal(true)}
+                        className="px-4 py-2.5 bg-black hover:bg-neutral-900 border-2 border-brand-yellow/30 hover:border-brand-yellow text-brand-yellow hover:text-white rounded-xl text-xs font-black uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md flex-1 sm:flex-initial"
+                      >
+                        <Shirt size={14} /> Raplife Outfits
+                      </button>
+
+                      {/* Predetermined outfit button: only visible if selectedOutfit === null */}
+                      {selectedOutfit === null && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Select first Male or Female outfit as predetermined default depending on gender filter
+                            const dForGender = PREDEFINED_OUTFITS.find(o => o.gender === genderFilter) || PREDEFINED_OUTFITS[0];
+                            setSelectedOutfit(dForGender);
+                            setErrorText(null);
+                          }}
+                          className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-gray-300 hover:text-white border border-white/10 rounded-xl text-xs font-black uppercase transition-colors flex items-center justify-center gap-1.5 cursor-pointer flex-1 sm:flex-initial"
+                        >
+                          <Check size={14} /> Predetermined outfit
+                        </button>
+                      )}
+
+                      {/* If outfit is currently selected, show option to remove choice */}
+                      {selectedOutfit !== null && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedOutfit(null);
+                          }}
+                          className="px-3.5 py-2.5 bg-zinc-850 hover:bg-zinc-800 border border-white/10 text-gray-400 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer flex-1 sm:flex-initial"
+                          title="Remover selección de vestido"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* IA START GENERATE OR TRY ON BUTTON */}
+                  <div className="pt-1">
+                    <button
+                      onClick={handleApplyTryon}
+                      disabled={loading}
+                      className="w-full py-4 bg-brand-yellow text-black font-black italic uppercase tracking-widest text-xs rounded-xl shadow-glow hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-25 disabled:pointer-events-none cursor-pointer flex items-center justify-center gap-2 border-2 border-black"
+                    >
+                      <Sparkles size={16} /> 
+                      {loading 
+                        ? 'SINTONIZANDO VESTUARIO IA...' 
+                        : selectedOutfit 
+                          ? 'APLICAR VESTUARIO CON IA' 
+                          : 'GENERAR RAPLIFE OUTFIT IA'
+                      }
+                    </button>
+                  </div>
+                </div>
+
+                {/* LIENZO DE RETOQUE FOOTER BUTTONS (DOWNLOAD/SAVE TRANSITIONS) */}
                 <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
                   <div className="flex items-center gap-2">
                     {avatarUrl && (
@@ -1106,8 +1207,53 @@ const StudioView = () => {
             )}
           </div>
 
+          {/* ERROR LOGS IN WORKSPACE */}
+          {errorText && (
+            <div className="p-5 bg-red-500/10 border border-red-500/20 text-red-500 rounded-3xl flex flex-col gap-2.5 text-xs text-left">
+              <div className="flex gap-2 font-bold uppercase tracking-wider">
+                <AlertTriangle className="shrink-0" size={16} />
+                <span>ERROR AL CAMBIAR VESTIMIENTO</span>
+              </div>
+              <p className="text-[10.5px] leading-relaxed text-gray-400 font-medium">
+                {errorText}
+              </p>
+              {(errorText.includes('RESOURCE_EXHAUSTED') || errorText.includes('QUOTA_EXHAUSTED') || errorText.includes('429') || errorText.includes('quota') || errorText.includes('Quota')) && (
+                <div className="bg-black/50 border border-brand-yellow/30 p-4.5 rounded-xl space-y-2.5 text-[10px] text-gray-300">
+                  <p className="font-black text-brand-yellow flex items-center gap-1 uppercase tracking-wider">💡 AGOTAMIENTO DE CUOTA GRATUITA DETECTADO:</p>
+                  <p className="font-semibold leading-relaxed text-gray-400">
+                    El límite de solicitudes gratuitas de la API de imágenes de Gemini se ha completado temporalmente para la clave por defecto de RapLife Records.
+                  </p>
+                  <div className="pt-1.5 border-t border-white/5 space-y-2">
+                    <p className="text-gray-300 font-bold">Opciones para continuar integrando inmediatamente:</p>
+                    <ul className="list-disc pl-4 space-y-1 text-gray-400">
+                      <li>
+                        <strong className="text-brand-yellow">AI Studio Plan de Pago</strong>: Activa la facturación pay-as-you-go en el menú del proyecto o en la configuración de la clave para remover este límite.
+                      </li>
+                      <li>
+                        <strong className="text-white">Usa tu propia clave</strong>: Ve a tu <strong className="text-emerald-400">Perfil de Usuario</strong> en la esquina superior e introduce tu propia Clave Gemini API con facturación habilitada.
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SUCCESS LOGS */}
+          {successText && (
+            <div className="p-5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-3xl flex flex-col gap-2 text-xs text-left">
+              <div className="flex gap-2 font-bold uppercase tracking-wider">
+                <CheckCircle2 className="shrink-0 text-emerald-400" size={16} />
+                <span>PROCESO COMPLETADO</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-gray-300 font-bold">
+                {successText}
+              </p>
+            </div>
+          )}
+
           {/* INSTRUCTIONS GUIDE TO ADD NEW MANNEQUINS/OUTFITS */}
-          <div className="bg-[#111] p-6 rounded-[2rem] border border-white/10 space-y-4">
+          <div className="bg-brand-dark p-6 rounded-[2rem] border-4 border-boombox-gray space-y-4 text-left">
             <h4 className="font-italic text-sm font-black italic uppercase tracking-tight text-brand-yellow flex items-center gap-2">
               <Info size={16} /> ADMINISTRACIÓN: CÓMO SUBIR MÁS OPCIONES DE OUTFIT
             </h4>
@@ -1146,197 +1292,191 @@ const StudioView = () => {
               </p>
             </div>
           </div>
-        </div>
 
-        {/* CLOTHING SELECTOR & TRY-ON OPTIONS (5 columns) */}
-        <div className="lg:col-span-5 space-y-6">
-          <div className="bg-brand-dark p-6 rounded-[2rem] border-4 border-boombox-gray flex flex-col space-y-5">
-            <h2 className="text-xl font-black italic uppercase tracking-tighter text-brand-yellow flex items-center gap-2">
-              <Shirt size={20} /> VERSIÓN DIGITAL OUTFITS
-            </h2>
-            <p className="text-gray-500 text-[10px] font-bold uppercase leading-relaxed tracking-wider">
-              Selecciona tu género de identidad para filtrar los catálogos y haz clic sobre el maniquí de RapLife para probártelo.
+          {/* ATTEMPTS STATUS */}
+          <div className="flex justify-between items-center bg-black/40 border border-white/5 p-4 rounded-2xl text-xs text-left">
+            <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Estatus de generación de Avatar IA:</span>
+            <span className="font-black italic px-2.5 py-1 rounded text-[11px] bg-green-500/20 text-green-400">
+              ILIMITADOS (McFly Promo)
+            </span>
+          </div>
+
+          {/* NOTIFICATION WARNING ABOUT APPAREL IA CRITERIA */}
+          <div className="bg-black/30 p-5 rounded-[2rem] border border-white/5 text-[9.5px] font-bold text-gray-500 uppercase leading-relaxed tracking-wider space-y-1.5 text-left">
+            <p className="text-gray-400 font-black flex items-center gap-1.5">
+              <CheckCircle2 size={13} className="text-brand-green" /> REGLAS DE SINTONIZACIÓN IA
             </p>
-
-            {/* GENDER TABS */}
-            <div className="grid grid-cols-2 gap-2 bg-black/40 p-1 rounded-xl border border-white/5">
-              <button
-                onClick={() => {
-                  setGenderFilter('male');
-                  setSelectedOutfit(null);
-                }}
-                className={`py-2 rounded-lg font-black uppercase text-xs italic tracking-wider transition-colors ${
-                  genderFilter === 'male' ? 'bg-brand-yellow text-black' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                👦 COLECCIÓN HOMBRE
-              </button>
-              <button
-                onClick={() => {
-                  setGenderFilter('female');
-                  setSelectedOutfit(null);
-                }}
-                className={`py-2 rounded-lg font-black uppercase text-xs italic tracking-wider transition-colors ${
-                  genderFilter === 'female' ? 'bg-brand-yellow text-black' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                👧 COLECCIÓN MUJER
-              </button>
-            </div>
-
-            {/* OUTFITS BENTO GRID */}
-            <div className="grid grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1">
-              {PREDEFINED_OUTFITS.filter(o => o.gender === genderFilter).map((outfit) => {
-                const isSelected = selectedOutfit?.id === outfit.id;
-                return (
-                  <button
-                    key={outfit.id}
-                    onClick={() => {
-                      setSelectedOutfit(outfit);
-                      setErrorText(null);
-                    }}
-                    className={`p-3 rounded-2xl border-2 text-left transition-all relative overflow-hidden flex flex-col justify-between group cursor-pointer ${
-                      isSelected 
-                        ? 'border-brand-yellow bg-brand-yellow/5 scale-[0.98] shadow-glow' 
-                        : 'border-white/5 bg-white/[0.01] hover:border-white/10'
-                    }`}
-                  >
-                    <div className="space-y-2">
-                      {/* Mannequin / Fallback visual layout */}
-                      <div className="relative aspect-square w-full rounded-xl bg-black overflow-hidden border border-white/5">
-                        <img 
-                          src={`/assets/outfits/${outfit.filename}`}
-                          onError={(e) => {
-                            // Swap with fallback if not uploaded yet
-                            e.currentTarget.src = outfit.fallbackUrl;
-                          }}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          alt={outfit.name}
-                        />
-                        <div className="absolute inset-x-0 bottom-0 bg-black/60 text-[8px] font-mono font-bold text-center py-0.5 uppercase tracking-wide text-gray-300">
-                          {outfit.filename}
-                        </div>
-                      </div>
-
-                      <div>
-                        <h4 className="font-black italic uppercase tracking-tighter text-white leading-normal text-xs truncate group-hover:text-brand-yellow transition-colors">
-                          {outfit.name}
-                        </h4>
-                        <p className="text-[8px] font-bold text-gray-500 uppercase tracking-widest mt-0.5 shrink-0 block leading-none">
-                          Pre-diseñado
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* SELECTED OUTFIT DESCRIPTION */}
-            {selectedOutfit ? (
-              <motion.div 
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-black/30 p-4 border border-white/5 rounded-2xl space-y-2 text-xs"
-              >
-                <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
-                  <span className="font-black italic text-brand-yellow uppercase tracking-wider text-[11px]">{selectedOutfit.name}</span>
-                  <span className="text-[8px] font-mono text-gray-500 uppercase">{selectedOutfit.filename}</span>
-                </div>
-                <p className="text-[10px] text-gray-400 font-semibold leading-relaxed uppercase tracking-wide">
-                  {selectedOutfit.description}
-                </p>
-              </motion.div>
-            ) : (
-              <div className="bg-brand-yellow/5 p-4 border border-brand-yellow/10 text-center text-[10px] font-bold uppercase tracking-wide rounded-2xl text-gray-400">
-                <span className="text-brand-yellow">✨ OUTFIT Y2K POR DEFECTO ACTIVADO:</span> Se generará una versión digital de tu vestuario con estilo Y2K Hip-Hop RapLife, manteniendo tus accesorios.
-              </div>
-            )}
-
-            {/* ATTEMPTS STATUS */}
-            <div className="flex justify-between items-center bg-black/40 border border-white/5 p-3 rounded-xl text-xs">
-              <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Estatus de generación de Avatar IA:</span>
-              <span className="font-black italic px-2.5 py-1 rounded text-[11px] bg-green-500/20 text-green-400">
-                ILIMITADOS (McFly Promo)
-              </span>
-            </div>
-
-            {/* ACTIVATE TryOn BUTTON */}
-            <button
-              onClick={handleApplyTryon}
-              disabled={loading || !selfie}
-              className="w-full py-4 bg-brand-yellow text-black font-black italic uppercase tracking-tight text-xs rounded-xl shadow-glow hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-25 disabled:pointer-events-none cursor-pointer flex items-center justify-center gap-2"
-            >
-              <Sparkles size={16} /> 
-              {loading 
-                ? 'SINTONIZANDO VESTUARIO IA...' 
-                : selectedOutfit 
-                  ? 'APLICAR VESTUARIO CON IA' 
-                  : 'GENERAR RAPLIFE OUTFIT IA'
-              }
-            </button>
-
-            {/* ERROR LOGS */}
-            {errorText && (
-              <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl flex flex-col gap-2.5 text-xs">
-                <div className="flex gap-2 font-bold uppercase tracking-wider">
-                  <AlertTriangle className="shrink-0" size={16} />
-                  <span>ERROR AL CAMBIAR VESTIDO</span>
-                </div>
-                <p className="text-[10px] leading-relaxed lowercase first-letter:uppercase text-gray-400 font-medium">
-                  {errorText}
-                </p>
-                {(errorText.includes('RESOURCE_EXHAUSTED') || errorText.includes('QUOTA_EXHAUSTED') || errorText.includes('429') || errorText.includes('quota') || errorText.includes('Quota')) && (
-                  <div className="bg-black/50 border border-brand-yellow/30 p-4.5 rounded-xl space-y-2.5 text-[10px] text-gray-300">
-                    <p className="font-black text-brand-yellow flex items-center gap-1 uppercase tracking-wider">💡 AGOTAME DE CUOTA GRATUITA DETECTADO:</p>
-                    <p className="font-semibold leading-relaxed text-gray-400">
-                      El límite de solicitudes gratuitas de la API de imágenes de Gemini se ha completado temporalmente para la clave por defecto.
-                    </p>
-                    <div className="pt-1.5 border-t border-white/5 space-y-2">
-                      <p className="text-gray-300 font-bold">Opciones para continuar diseñando inmediatamente:</p>
-                      <ul className="list-disc pl-4 space-y-1 text-gray-400">
-                        <li>
-                          <strong className="text-brand-yellow">AI Studio Plan de Pago</strong>: Activa la facturación pay-as-you-go en el menú de la izquierda o en la configuración de la clave para remover este límite.
-                        </li>
-                        <li>
-                          <strong className="text-white">Usa tu propia clave</strong>: Ve a tu <strong className="text-emerald-400">Perfil de Usuario</strong> e introduce tu propia Clave Gemini API con facturación habilitada.
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* SUCCESS LOGS */}
-            {successText && (
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex flex-col gap-2 text-xs">
-                <div className="flex gap-2 font-bold uppercase tracking-wider">
-                  <CheckCircle2 className="shrink-0 text-emerald-400" size={16} />
-                  <span>PROCESO COMPLETADO</span>
-                </div>
-                <p className="text-[10px] leading-relaxed uppercase text-gray-300 font-bold">
-                  {successText}
-                </p>
-              </div>
-            )}
-
-            {/* NOTIFICATION WARNING ABOUT APPAREL IA CRITERIA */}
-            <div className="bg-black/30 p-4 rounded-2xl border border-white/5 text-[9px] font-bold text-gray-500 uppercase leading-relaxed tracking-wider space-y-1">
-              <p className="text-gray-400 font-black flex items-center gap-1">
-                <CheckCircle2 size={12} className="text-brand-green" /> REGLAS DE SINTONIZACIÓN IA
-              </p>
-              <p>
-                1. Mantendrá intacto tu rostro, peinado, pose corporal e iluminación del fondo.
-              </p>
-              <p>
-                2. Solo se reemplazan los tejidos de camisas, suéteres, pantalones y tenis deportivos.
-              </p>
-            </div>
+            <p>
+              1. Mantendrá intacto tu rostro, peinado, pose corporal e iluminación del fondo.
+            </p>
+            <p>
+              2. Solo se reemplazan los tejidos de camisas, suéteres, pantalones y tenis deportivos.
+            </p>
           </div>
         </div>
 
       </div>
+
+      {/* OUTFITS POPUP MODAL */}
+      <AnimatePresence>
+        {showOutfitsModal && (
+          <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[999] backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-brand-dark border-4 border-boombox-gray p-6 rounded-[2.5rem] max-w-xl w-full shadow-2xl relative text-left boombox-texture font-sans max-h-[90vh] flex flex-col"
+            >
+              {/* Decorative design screws */}
+              <div className="absolute top-4 left-4 w-2.5 h-2.5 rounded-full bg-white/10" />
+              <div className="absolute top-4 right-4 w-2.5 h-2.5 rounded-full bg-white/10" />
+              <div className="absolute bottom-4 left-4 w-2.5 h-2.5 rounded-full bg-white/10" />
+              <div className="absolute bottom-4 right-4 w-2.5 h-2.5 rounded-full bg-white/10" />
+
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4 shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-brand-yellow text-black rounded-lg">
+                    <Shirt size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black italic uppercase tracking-tighter text-white">
+                      VERSIÓN DIGITAL OUTFITS
+                    </h3>
+                    <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">
+                      Selecciona un estilo premium para tu avatar
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowOutfitsModal(false)}
+                  className="text-gray-400 hover:text-white p-1 hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Scrollable Contents Wrapper */}
+              <div className="space-y-4 overflow-y-auto pr-1 flex-1">
+                {/* GENDER TABS */}
+                <div className="grid grid-cols-2 gap-2 bg-black/40 p-1 rounded-xl border border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGenderFilter('male');
+                      setSelectedOutfit(null);
+                    }}
+                    className={`py-2 rounded-lg font-black uppercase text-xs italic tracking-wider transition-colors ${
+                      genderFilter === 'male' ? 'bg-brand-yellow text-black shadow-glow' : 'text-gray-450 hover:text-white'
+                    }`}
+                  >
+                    👦 COLECCIÓN HOMBRE
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGenderFilter('female');
+                      setSelectedOutfit(null);
+                    }}
+                    className={`py-2 rounded-lg font-black uppercase text-xs italic tracking-wider transition-colors ${
+                      genderFilter === 'female' ? 'bg-brand-yellow text-black shadow-glow' : 'text-gray-450 hover:text-white'
+                    }`}
+                  >
+                    👧 COLECCIÓN MUJER
+                  </button>
+                </div>
+
+                {/* OUTFITS BENTO GRID */}
+                <div className="grid grid-cols-2 gap-3 max-h-[350px] overflow-y-auto pr-1">
+                  {PREDEFINED_OUTFITS.filter(o => o.gender === genderFilter).map((outfit) => {
+                    const isSelected = selectedOutfit?.id === outfit.id;
+                    return (
+                      <button
+                        key={outfit.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedOutfit(outfit);
+                          setErrorText(null);
+                        }}
+                        className={`p-3 rounded-2xl border-2 text-left transition-all relative overflow-hidden flex flex-col justify-between group cursor-pointer ${
+                          isSelected 
+                            ? 'border-brand-yellow bg-brand-yellow/10 scale-[0.98] shadow-glow' 
+                            : 'border-white/5 bg-white/[0.01] hover:border-white/10'
+                        }`}
+                      >
+                        <div className="space-y-2 w-full">
+                          {/* Mannequin / Fallback visual layout */}
+                          <div className="relative aspect-square w-full rounded-xl bg-black overflow-hidden border border-white/5">
+                            <img 
+                              src={`/assets/outfits/${outfit.filename}`}
+                              onError={(e) => {
+                                e.currentTarget.src = outfit.fallbackUrl;
+                              }}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              alt={outfit.name}
+                            />
+                            <div className="absolute inset-x-0 bottom-0 bg-black/60 text-[8px] font-mono font-bold text-center py-0.5 uppercase tracking-wide text-gray-300">
+                              {outfit.filename}
+                            </div>
+                          </div>
+
+                          <div>
+                            <h4 className="font-black italic uppercase tracking-tighter text-white leading-normal text-xs truncate group-hover:text-brand-yellow transition-colors">
+                              {outfit.name}
+                            </h4>
+                            <p className="text-[8px] font-bold text-gray-500 uppercase tracking-widest mt-0.5 shrink-0 block leading-none">
+                              Pre-diseñado
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* SELECTED OUTFIT DESCRIPTION */}
+                {selectedOutfit ? (
+                  <div className="bg-black/40 p-4 border border-white/5 rounded-2xl space-y-1.5 text-xs select-none">
+                    <div className="flex justify-between items-center border-b border-white/5 pb-1">
+                      <span className="font-black italic text-brand-yellow uppercase tracking-wider text-[11px]">{selectedOutfit.name}</span>
+                      <span className="text-[8px] font-mono text-gray-500 uppercase">{selectedOutfit.filename}</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 font-semibold leading-relaxed uppercase tracking-wide">
+                      {selectedOutfit.description}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-brand-yellow/5 p-4 border border-brand-yellow/10 text-center text-[10px] font-bold uppercase tracking-wide rounded-2xl text-gray-400">
+                    <span className="text-brand-yellow">✨ OUTFIT Y2K POR DEFECTO ACTIVADO:</span> Se generará una versión digital de tu vestuario con estilo Y2K Hip-Hop RapLife, manteniendo tus accesorios.
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer Controls */}
+              <div className="pt-4 border-t border-white/10 flex items-center justify-end gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedOutfit(null);
+                    setShowOutfitsModal(false);
+                  }}
+                  className="py-3 px-5 text-center rounded-xl bg-black/40 text-xs font-black uppercase tracking-wider text-gray-300 hover:text-white hover:bg-black/65 transition-colors border-2 border-black cursor-pointer"
+                >
+                  OUTFIT POR DEFECTO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowOutfitsModal(false)}
+                  className="py-3 px-6 text-center rounded-xl bg-brand-yellow hover:bg-brand-yellow/85 text-black font-black uppercase text-xs shadow-md transition-all border-2 border-black cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check size={14} /> CONFIRMAR SELECCIÓN
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

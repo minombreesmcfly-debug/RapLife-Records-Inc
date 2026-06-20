@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, RotateCcw, Volume2, VolumeX, ChevronLeft, ChevronRight, ChevronUp, Trophy, Gift, Star, Award, Medal, Loader2, CheckCircle, Sparkles } from 'lucide-react';
+import { Play, RotateCcw, Volume2, VolumeX, ChevronLeft, ChevronRight, ChevronUp, Trophy, Gift, Star, Award, Medal, Loader2, CheckCircle, Sparkles, Lock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
-import { collection, query, orderBy, limit, getDocs, doc, updateDoc, increment, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, doc, updateDoc, increment, getDoc, setDoc, onSnapshot, arrayUnion } from 'firebase/firestore';
 
 const RewardsTable = () => {
   const { user } = useAuth();
@@ -16,7 +16,7 @@ const RewardsTable = () => {
   const rewards = [
     { pts: 100000, display_pts: '100,000', icon: Trophy, title: 'CAMEO / VIDEO MUSICAL', desc: 'Aparición estelar y co-producción en el próximo videoclip oficial promocional de RapLife Records.' },
     { pts: 50000, display_pts: '50,000', icon: Sparkles, title: 'CAMEO EN VIDEO DE RAP LIFE', desc: 'Aparición especial en un video oficial de la música y proyectos de Rap Life.' },
-    { pts: 5000, display_pts: '5,000', icon: Star, title: 'MENCIÓN EN STORIES', desc: 'Mención directa o promoción exclusiva en nuestras redes sociales e historias oficiales.' }
+    { pts: 25000, display_pts: '25,000', icon: Star, title: 'MENCIÓN EN STORIES', desc: 'Mención directa o promoción exclusiva en nuestras redes sociales e historias oficiales.' }
   ];
 
   useEffect(() => {
@@ -277,15 +277,15 @@ const Leaderboard = () => {
 };
 
 const CHARACTERS = [
-  { id: 'biggie', name: 'Biggie', subtitle: 'The Notorious', description: 'Leyenda del East Coast. Peso pesado con flow insuperable.', prefix: 'player', avatarFallback: '#ffae00', bulletOffsetY: 35, bulletOffsetX: 0 },
-  { id: '2pac', name: '2Pac', subtitle: 'Makaveli', description: 'Poeta lírico de la West Coast. Rapidez mental, pasión y estilo legendario.', prefix: 'player2', avatarFallback: '#ff4444', bulletOffsetY: 22, bulletOffsetX: 6 },
-  { id: 'mcfly', name: 'McFly', subtitle: 'Fly Boy', description: 'Pionero futurista de RapLife. Ágil de pies, saltos propulsados y beats cósmicos.', prefix: 'player3', avatarFallback: '#9b5de5', bulletOffsetY: 28, bulletOffsetX: 2 }
+  { id: 'mcfly', name: 'MCFLY', subtitle: 'EMECE', description: 'Pionero de RapLife. Ágil de pies, saltos propulsados y beats cósmicos.', prefix: 'player3', avatarFallback: '#9b5de5', bulletOffsetY: 28, bulletOffsetX: 2, unlockScore: 0 },
+  { id: '2pac', name: 'Tupac', subtitle: 'Makaveli', description: 'Poeta lírico de la West Coast. Rapidez mental, pasión y estilo legendario.', prefix: 'player2', avatarFallback: '#ff4444', bulletOffsetY: 22, bulletOffsetX: 6, unlockScore: 10000 },
+  { id: 'biggie', name: 'Biggy', subtitle: 'The Notorious', description: 'Leyenda del East Coast. Peso pesado con flow insuperable.', prefix: 'player', avatarFallback: '#ffae00', bulletOffsetY: 35, bulletOffsetX: 0, unlockScore: 15000 }
 ] as const;
 
 const GameView = () => {
   const { user, profile, isAdmin } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [selectedCharId, setSelectedCharId] = useState<'biggie' | '2pac' | 'mcfly'>('biggie');
+  const [selectedCharId, setSelectedCharId] = useState<'biggie' | '2pac' | 'mcfly'>('mcfly');
   const [showGuide, setShowGuide] = useState(false);
   const selectedCharIdRef = useRef(selectedCharId);
 
@@ -293,9 +293,51 @@ const GameView = () => {
     selectedCharIdRef.current = selectedCharId;
   }, [selectedCharId]);
 
+  const [lockWarning, setLockWarning] = useState<string | null>(null);
+  const [purchasingChar, setPurchasingChar] = useState<any | null>(null);
+  const [purchaseStatus, setPurchaseStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
+  useEffect(() => {
+    if (profile?.highScore) {
+      setHighScore(profile.highScore);
+    }
+  }, [profile]);
+
+  const handlePurchaseCharacter = async () => {
+    if (!user || !purchasingChar) return;
+    setPurchaseStatus('loading');
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const snap = await getDoc(userRef);
+      if (snap.exists()) {
+        const currentPoints = snap.data()?.points || 0;
+        if (currentPoints < purchasingChar.unlockScore) {
+          throw new Error("Puntos insuficientes");
+        }
+        await updateDoc(userRef, {
+          points: increment(-purchasingChar.unlockScore),
+          unlockedCharacters: arrayUnion(purchasingChar.id)
+        });
+        setPurchaseStatus('success');
+        setSelectedCharId(purchasingChar.id);
+        setTimeout(() => {
+          setPurchasingChar(null);
+          setPurchaseStatus('idle');
+        }, 1500);
+      }
+    } catch (e: any) {
+      console.error(e);
+      setPurchaseStatus('error');
+    }
+  };
+
   const [gameState, setGameState] = useState<'idle' | 'playing' | 'gameOver'>('idle');
   const gameStateRef = useRef(gameState);
   const [score, setScore] = useState(0);
+  const scoreRef = useRef(0);
+  useEffect(() => {
+    scoreRef.current = score;
+  }, [score]);
   const [highScore, setHighScore] = useState(0);
 
   const [imagesLoaded, setImagesLoaded] = useState(false);
@@ -583,6 +625,7 @@ const GameView = () => {
   const startNewGame = () => {
     gameStateRef.current = 'playing';
     setGameState('playing');
+    scoreRef.current = 0;
     setScore(0);
     playerRef.current = {
       x: 150,
@@ -615,7 +658,7 @@ const GameView = () => {
   const shoot = () => {
     if (gameStateRef.current !== 'playing') return;
     const player = playerRef.current;
-    player.shootTimer = 5; // Duración corta para que no interfiera con caminar
+    player.shootTimer = 16; // Duración para que se reproduzca la animación de disparo completa de 4 frames
     
     // Buscar el personaje activo para obtener su alineación de disparo
     const activeChar = CHARACTERS.find(c => c.id === selectedCharIdRef.current) || CHARACTERS[0];
@@ -650,6 +693,14 @@ const GameView = () => {
     const world = worldRef.current;
 
     if (gameStateRef.current === 'playing') {
+      // Auto score points increment over time (about +10 points every 20 frames / 0.35 seconds)
+      world.scoreTimer = (world.scoreTimer || 0) + 1;
+      if (world.scoreTimer >= 20) {
+        world.scoreTimer = 0;
+        scoreRef.current += 10;
+        setScore(scoreRef.current);
+      }
+
       // Update timers
       if (player.shootTimer > 0) player.shootTimer--;
 
@@ -703,6 +754,14 @@ const GameView = () => {
       world.offsetX += (targetX - world.offsetX) * 0.1;
       if (world.offsetX < 0) world.offsetX = 0;
 
+      // Prevent player from walking/falling off the left edge of the screen viewport
+      if (player.x < world.offsetX) {
+        player.x = world.offsetX;
+      }
+      if (player.x < 0) {
+        player.x = 0;
+      }
+
       // cleanup old stuff to save memory
       if (world.platforms.length > 50) {
           world.platforms = world.platforms.filter(p => p.x + p.width > world.offsetX - 500);
@@ -717,7 +776,8 @@ const GameView = () => {
           if (e.active && b.x > e.x && b.x < e.x + e.width && b.y > e.y && b.y < e.y + e.height) {
             b.active = false;
             e.active = false;
-            setScore(s => s + 10);
+            scoreRef.current += 100; // Defeating an enemy rewards 100 points
+            setScore(scoreRef.current);
           }
         });
         if (Math.abs(b.x - player.x) > canvas.width) b.active = false;
@@ -1049,14 +1109,60 @@ const GameView = () => {
 
         if (isJumping && isShooting && spritesRef.current.jump_shoot) {
             currentImage = spritesRef.current.jump_shoot;
+            const cw = currentImage.naturalWidth;
+            const ch = currentImage.naturalHeight;
+            if (cw > 0 && ch > 0) {
+                frameCount = Math.max(1, Math.round(cw / ch));
+            }
+            if (frameCount > 1) {
+                const totalDuration = 16;
+                const progress = (totalDuration - player.shootTimer) / totalDuration;
+                currentFrame = Math.min(frameCount - 1, Math.floor(progress * frameCount));
+            }
         } else if (isShooting && spritesRef.current.shoot) {
             currentImage = spritesRef.current.shoot;
+            const cw = currentImage.naturalWidth;
+            const ch = currentImage.naturalHeight;
+            if (cw > 0 && ch > 0) {
+                frameCount = Math.max(1, Math.round(cw / ch));
+            }
+            if (frameCount > 1) {
+                const totalDuration = 16;
+                const progress = (totalDuration - player.shootTimer) / totalDuration;
+                currentFrame = Math.min(frameCount - 1, Math.floor(progress * frameCount));
+            }
         } else if (isJumping && spritesRef.current.jump) {
             currentImage = spritesRef.current.jump;
+            const cw = currentImage.naturalWidth;
+            const ch = currentImage.naturalHeight;
+            if (cw > 0 && ch > 0) {
+                frameCount = Math.max(1, Math.round(cw / ch));
+            }
+            if (frameCount > 1) {
+                currentFrame = Math.floor(player.frame % frameCount);
+            }
         } else if (isMoving && spritesRef.current.walk) {
             currentImage = spritesRef.current.walk;
-            frameCount = 12; // Configurado para tu nueva tira de 12 frames
+            const cw = currentImage.naturalWidth;
+            const ch = currentImage.naturalHeight;
+            if (cw > 0 && ch > 0) {
+                frameCount = Math.max(1, Math.round(cw / ch));
+            } else {
+                frameCount = 12;
+            }
             currentFrame = Math.floor(player.frame % frameCount);
+        } else {
+            if (spritesRef.current.idle) {
+                currentImage = spritesRef.current.idle;
+                const cw = currentImage.naturalWidth;
+                const ch = currentImage.naturalHeight;
+                if (cw > 0 && ch > 0) {
+                    frameCount = Math.max(1, Math.round(cw / ch));
+                }
+                if (frameCount > 1) {
+                    currentFrame = Math.floor((Date.now() / 150) % frameCount);
+                }
+            }
         }
 
         if (currentImage && currentImage.complete && currentImage.naturalWidth > 0) {
@@ -1144,6 +1250,7 @@ const GameView = () => {
 
   const handleGameEnd = async () => {
     if (!user) return;
+    const finalScore = scoreRef.current;
     
     try {
       const userRef = doc(db, 'users', user.uid);
@@ -1158,8 +1265,8 @@ const GameView = () => {
           role: 'fan',
           category: 'OYENTE ACTIVO',
           plan: 'fan',
-          points: score,
-          highScore: score,
+          points: finalScore,
+          highScore: finalScore,
           createdAt: new Date().toISOString(),
           isPinned: false,
           bio: '',
@@ -1174,8 +1281,8 @@ const GameView = () => {
         const currentHighScore = snap.data()?.highScore || 0;
 
         await setDoc(userRef, {
-          points: currentPoints + score,
-          highScore: Math.max(currentHighScore, score)
+          points: currentPoints + finalScore,
+          highScore: Math.max(currentHighScore, finalScore)
         }, { merge: true });
       }
     } catch (e) {
@@ -1213,7 +1320,6 @@ const GameView = () => {
                 exit={{ opacity: 0 }}
                 className="absolute inset-0 bg-black/95 backdrop-blur-sm flex flex-col items-center justify-between p-4 py-6 text-center overflow-hidden"
               >
-                {/* Header Section */}
                 <div className="relative z-10">
                   <h2 className="text-2xl sm:text-3xl font-black italic uppercase tracking-tighter text-white leading-none">
                     RAPLIFE <span className="text-brand-yellow">ARCADE</span>
@@ -1225,23 +1331,54 @@ const GameView = () => {
                 <div className="relative z-10 w-full max-w-lg my-1 sm:my-2 px-1">
                   <div className="grid grid-cols-3 gap-2">
                     {CHARACTERS.map((char) => {
+                      const isUnlocked = char.unlockScore === 0 || profile?.unlockedCharacters?.includes(char.id) || false;
                       const isSelected = selectedCharId === char.id;
+                      const canAfford = (profile?.points || 0) >= char.unlockScore;
                       return (
                         <button
                           key={char.id}
-                          onClick={() => setSelectedCharId(char.id as any)}
+                          onClick={() => {
+                            if (!isUnlocked) {
+                              if (!user) {
+                                setLockWarning(`Inicia sesión para comprar a ${char.name.toUpperCase()} por ${char.unlockScore.toLocaleString()} PTS.`);
+                              } else if (!canAfford) {
+                                setLockWarning(`Necesitas ${char.unlockScore.toLocaleString()} PTS para comprar a ${char.name.toUpperCase()} (tu saldo: ${(profile?.points || 0).toLocaleString()} PTS).`);
+                              } else {
+                                setLockWarning(null);
+                                setPurchasingChar(char);
+                              }
+                            } else {
+                              setLockWarning(null);
+                              setSelectedCharId(char.id as any);
+                            }
+                          }}
                           className={`flex flex-col p-2.5 rounded-2xl text-center border-2 transition-all relative group overflow-hidden ${
-                            isSelected 
-                              ? 'border-brand-yellow bg-brand-yellow/10 shadow-[0_0_20px_rgba(248,251,2,0.3)] scale-[1.03]' 
-                              : 'border-white/5 bg-black/50 hover:border-white/25'
+                            !isUnlocked
+                              ? 'border-red-950/40 bg-red-950/15 opacity-60 hover:opacity-85 cursor-pointer'
+                              : isSelected 
+                                ? 'border-brand-yellow bg-brand-yellow/10 shadow-[0_0_20px_rgba(248,251,2,0.3)] scale-[1.03]' 
+                                : 'border-white/5 bg-black/50 hover:border-white/25'
                           }`}
                         >
-                          {/* Circle Avatar with character brand color */}
-                          <div 
-                            className="w-10 h-10 sm:w-12 sm:h-12 mx-auto rounded-full mb-1.5 flex items-center justify-center font-black text-sm text-black uppercase shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
-                            style={{ backgroundColor: char.avatarFallback }}
-                          >
-                            {char.name[0]}
+                          {/* Circle Avatar with character brand color or Padlock */}
+                          <div className="relative mx-auto mb-1.5">
+                            <div 
+                              className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-black text-sm text-black uppercase shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                              style={{ backgroundColor: !isUnlocked ? '#2e1c1c' : char.avatarFallback }}
+                            >
+                              {!isUnlocked ? (
+                                <Lock size={15} className="text-red-500 animate-pulse" />
+                              ) : (
+                                char.name[0]
+                              )}
+                            </div>
+                            
+                            {/* Score Tag offset if locked */}
+                            {!isUnlocked && (
+                              <div className="absolute -bottom-1 -right-1 bg-red-600 text-white rounded px-1 py-0.5 text-[5px] font-bold">
+                                🔒 {char.unlockScore >= 1000 ? `${char.unlockScore / 1000}K` : char.unlockScore}
+                              </div>
+                            )}
                           </div>
                           
                           <span className="text-[10px] sm:text-xs font-black uppercase text-white truncate leading-tight block">
@@ -1250,12 +1387,76 @@ const GameView = () => {
                           <span className="text-[6px] sm:text-[7px] text-brand-yellow font-black uppercase tracking-wider block mt-0.5 truncate">
                             {char.subtitle}
                           </span>
-                          <p className="text-[5px] sm:text-[6px] leading-tight text-gray-500 font-bold uppercase mt-1.5 line-clamp-2 h-5 text-center px-0.5 pointer-events-none">
-                            {char.description}
+                          <p className="text-[5px] sm:text-[6px] leading-tight text-gray-400 font-bold uppercase mt-1.5 line-clamp-2 h-5 text-center px-0.5 pointer-events-none">
+                            {!isUnlocked ? `COMPRAR CON ${char.unlockScore.toLocaleString()} PTS (MONEDA)` : char.description}
                           </p>
                         </button>
                       );
                     })}
+                  </div>
+
+                  {/* Character Purchase Overlay */}
+                  {purchasingChar && (
+                    <div className="absolute inset-0 bg-black/98 z-20 flex flex-col items-center justify-center p-3 rounded-3xl border border-brand-yellow/30">
+                      <Gift className="text-brand-yellow animate-bounce mb-2" size={32} />
+                      <h3 className="text-md font-black uppercase text-white tracking-widest leading-none">CANJEAR CO MONEDA RAPLIFE</h3>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">¿Deseas canjear permanentemente a <span className="text-brand-yellow">{purchasingChar.name}</span>?</p>
+                      
+                      <div className="bg-black/80 rounded-2xl border-2 border-white/5 p-2 px-5 mt-3 text-center">
+                        <span className="text-[8px] uppercase font-black tracking-widest text-zinc-500 block">COSTO DEL CANJE</span>
+                        <span className="text-lg font-mono font-black italic text-brand-yellow">{purchasingChar.unlockScore.toLocaleString()} PTS</span>
+                      </div>
+
+                      {purchaseStatus === 'loading' && (
+                        <div className="flex items-center gap-2 mt-4 text-[10px] font-bold uppercase text-brand-yellow font-mono">
+                          <Loader2 className="animate-spin text-brand-yellow" size={12} />
+                          PROCESANDO ADQUISICIÓN...
+                        </div>
+                      )}
+
+                      {purchaseStatus === 'success' && (
+                        <div className="flex items-center gap-2 mt-4 text-[10px] font-extrabold uppercase text-green-500 font-mono">
+                          <CheckCircle size={12} />
+                          ¡CANJE EXITOSO! SELECCIONADO
+                        </div>
+                      )}
+
+                      {purchaseStatus === 'error' && (
+                        <div className="text-[10px] font-bold uppercase text-red-500 mt-4 font-mono">
+                          HUBO UN ERROR AL PROCESAR EL CANJE
+                        </div>
+                      )}
+
+                      {purchaseStatus === 'idle' && (
+                        <div className="flex items-center gap-2.5 mt-5">
+                          <button
+                            onClick={handlePurchaseCharacter}
+                            className="bg-brand-yellow hover:bg-yellow-400 text-black font-black uppercase text-[10px] px-4 py-2 rounded-2xl active:scale-95 transition-all shadow-lg hover:shadow-brand-yellow/20"
+                          >
+                            CONFIRMAR CANJE (-{purchasingChar.unlockScore.toLocaleString()} PTS)
+                          </button>
+                          <button
+                            onClick={() => setPurchasingChar(null)}
+                            className="bg-white/5 hover:bg-white/10 text-white font-black uppercase text-[10px] px-4 py-2 rounded-2xl active:scale-95 transition-all"
+                          >
+                            CANCELAR
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Dynamic Help Center & Status line */}
+                  <div className="mt-4 text-center min-h-[16px]">
+                    {lockWarning ? (
+                      <p className="text-[8px] sm:text-[10px] font-extrabold text-red-500 uppercase tracking-widest animate-pulse">
+                        {lockWarning}
+                      </p>
+                    ) : (
+                      <p className="text-[8px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                        TU RÉCORD HISTÓRICO: <span className="text-brand-yellow font-black">{Math.max(highScore, profile?.highScore || 0).toLocaleString()} PTS</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1366,36 +1567,36 @@ const GameView = () => {
               <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">DIRECCIÓN</span>
             </div>
 
-            {/* RIGHT: ACTION BUTTONS (Atari / Nintendo oval pill-shape, tilted diagonally) */}
+            {/* RIGHT: ACTION BUTTONS (Classic round arcade buttons) */}
             <div className="flex flex-col items-center gap-1.5 select-none">
-              <div className="relative w-40 h-20 bg-gradient-to-b from-[#1a1a1a] to-[#0d0d0d] rounded-2xl border-4 border-[#121212] shadow-[inset_0_4px_8px_rgba(0,0,0,0.9)]">
+              <div className="relative w-40 h-20 bg-gradient-to-b from-[#1a1a1a] to-[#0d0d0d] rounded-2xl border-4 border-[#121212] shadow-[inset_0_4px_8px_rgba(0,0,0,0.9)] flex items-center justify-around px-2">
                 {/* Diagonal background accent decal */}
-                <div className="absolute inset-x-3 top-1/2 -translate-y-1/2 h-[2px] bg-[#121212] rotate-[-22deg] opacity-60" />
+                <div className="absolute inset-x-3 top-1/2 -translate-y-1/2 h-[2px] bg-[#121212] rotate-[-22deg] opacity-60 pointer-events-none" />
                 
-                {/* Button B (FIRE) - lower, left */}
-                <div className="absolute left-3 bottom-1.5 flex flex-col items-center">
+                {/* Button B (FIRE) - Yellow, lower, left */}
+                <div className="flex flex-col items-center z-10">
                   <button 
                     onMouseDown={shoot}
                     onTouchStart={(e) => { e.preventDefault(); shoot(); }}
-                    className="w-12 h-5 bg-[#f59e0b] rounded-full border-b-4 border-[#b45309] active:border-b-0 active:translate-y-[2px] shadow-lg transform rotate-[-22deg] flex items-center justify-center transition-all cursor-pointer select-none"
+                    className="w-11 h-11 bg-amber-500 rounded-full border-b-4 border-amber-700 active:border-b active:translate-y-[2px] shadow-[0_4px_8px_rgba(245,158,11,0.5)] flex items-center justify-center transition-all cursor-pointer select-none"
                     title="DISPARAR"
                   >
-                    <span className="text-black font-black text-[9px] transform rotate-[22deg]">B</span>
+                    <span className="text-black font-black text-sm italic">B</span>
                   </button>
-                  <span className="text-[7px] font-black text-white/30 uppercase tracking-widest mt-0.5">FIRE</span>
+                  <span className="text-[7.5px] font-black text-white/40 uppercase tracking-widest mt-1">FIRE</span>
                 </div>
 
-                {/* Button A (JUMP3) - higher, right */}
-                <div className="absolute right-3 top-1.5 flex flex-col items-center">
+                {/* Button A (JUMP) - Red, higher, right */}
+                <div className="flex flex-col items-center mt-[-8px] z-10">
                   <button 
                     onMouseDown={jump}
                     onTouchStart={(e) => { e.preventDefault(); jump(); }}
-                    className="w-12 h-5 bg-[#ef4444] rounded-full border-b-4 border-[#b91c1c] active:border-b-0 active:translate-y-[2px] shadow-lg transform rotate-[-22deg] flex items-center justify-center transition-all cursor-pointer select-none"
+                    className="w-11 h-11 bg-red-500 rounded-full border-b-4 border-red-700 active:border-b active:translate-y-[2px] shadow-[0_4px_8px_rgba(239,68,68,0.5)] flex items-center justify-center transition-all cursor-pointer select-none"
                     title="SALTAR"
                   >
-                    <span className="text-black font-black text-[9px] transform rotate-[22deg]">A</span>
+                    <span className="text-black font-black text-sm italic">A</span>
                   </button>
-                  <span className="text-[7px] font-black text-white/30 uppercase tracking-widest mt-0.5">JUMP</span>
+                  <span className="text-[7.5px] font-black text-white/40 uppercase tracking-widest mt-1">JUMP</span>
                 </div>
               </div>
               <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">ACCIONES</span>
@@ -1403,20 +1604,20 @@ const GameView = () => {
           </div>
 
           {/* START / SELECT BUTTONS */}
-          <div className="flex justify-center gap-10 py-4 opacity-40">
+          <div className="flex justify-center gap-12 py-4 select-none z-10">
             <div className="flex flex-col items-center gap-1">
-              <button className="w-12 h-3 bg-[#111] rounded-full rotate-[-25deg] shadow-lg border border-white/5 active:bg-[#222]" />
-              <span className="text-[7px] font-black tracking-widest">SELECT</span>
+              <button className="w-9 h-9 bg-neutral-800 hover:bg-neutral-700 text-white rounded-full border-b-2 border-neutral-950 active:border-b active:translate-y-[1px] shadow-lg flex items-center justify-center text-[9px] font-black transition-all cursor-pointer" />
+              <span className="text-[7px] font-black text-white/30 tracking-widest uppercase">SELECT</span>
             </div>
             <div className="flex flex-col items-center gap-1">
               <button 
-                className="w-12 h-3 bg-[#111] rounded-full rotate-[-25deg] shadow-lg border border-white/5 active:bg-[#222]" 
+                className="w-9 h-9 bg-white hover:bg-zinc-100 text-black rounded-full border-b-2 border-zinc-400 active:border-b active:translate-y-[1px] shadow-lg flex items-center justify-center text-[9px] font-black transition-all cursor-pointer border border-black/10" 
                 onClick={() => {
                   if (gameState === 'idle') startNewGame();
                   else setGameState('idle');
                 }}
               />
-              <span className="text-[7px] font-black tracking-widest">START</span>
+              <span className="text-[7px] font-black text-white/50 tracking-widest uppercase">START</span>
             </div>
           </div>
         </div>

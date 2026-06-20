@@ -5,6 +5,36 @@ import { db } from '../lib/firebase';
 import { Search, User, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+const DEFAULT_FALLBACK_ARTISTS = [
+  {
+    id: 'mcfly',
+    displayName: 'McFly',
+    role: 'artist',
+    isExclusive: true,
+    photoURL: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop',
+    bio: 'Productor y artista oficial de RapLife Records. Revolucionando el sonido del ghetto.',
+    category: 'STAFF DIRECTO'
+  },
+  {
+    id: 'kase_o',
+    displayName: 'Kase-O',
+    role: 'artist',
+    isExclusive: true,
+    photoURL: 'https://images.unsplash.com/photo-1601643143482-96cb344070fb?q=80&w=400&auto=format&fit=crop',
+    bio: 'Líder legendario del rap hispanohablante. Trayecto histórico y puro flow.',
+    category: 'LEYENDA URBANA'
+  },
+  {
+    id: 'vandal',
+    displayName: 'Vandal Crew',
+    role: 'artist',
+    isExclusive: true,
+    photoURL: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop',
+    bio: 'El colectivo oficial de graffiti y rap hardcore underground de RapLife Records.',
+    category: 'STREET WEAR'
+  }
+];
+
 const ArtistsView = () => {
   const [artists, setArtists] = useState<any[]>([]);
   const [search, setSearch] = useState('');
@@ -15,9 +45,15 @@ const ArtistsView = () => {
       try {
         const q = query(collection(db, 'users'), where('role', '==', 'artist'));
         const snap = await getDocs(q);
-        setArtists(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        const mapped = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (mapped.length > 0) {
+          setArtists(mapped);
+        } else {
+          setArtists(DEFAULT_FALLBACK_ARTISTS);
+        }
       } catch (err) {
         console.warn("[ARTISTS] Failed to fetch artists roster offline:", err);
+        setArtists(DEFAULT_FALLBACK_ARTISTS);
       } finally {
         setLoading(false);
       }
