@@ -49,36 +49,6 @@ const PROM_SERVICES = [
   }
 ];
 
-const DEFAULT_FALLBACK_ARTISTS = [
-  {
-    id: 'mcfly',
-    displayName: 'McFly',
-    role: 'artist',
-    isExclusive: true,
-    photoURL: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop',
-    bio: 'Productor y artista oficial de RapLife Records. Revolucionando el sonido del ghetto.',
-    category: 'STAFF DIRECTO'
-  },
-  {
-    id: 'kase_o',
-    displayName: 'Kase-O',
-    role: 'artist',
-    isExclusive: true,
-    photoURL: 'https://images.unsplash.com/photo-1601643143482-96cb344070fb?q=80&w=400&auto=format&fit=crop',
-    bio: 'Líder legendario del rap hispanohablante. Trayecto histórico y puro flow.',
-    category: 'LEYENDA URBANA'
-  },
-  {
-    id: 'vandal',
-    displayName: 'Vandal Crew',
-    role: 'artist',
-    isExclusive: true,
-    photoURL: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop',
-    bio: 'El colectivo oficial de graffiti y rap hardcore underground de RapLife Records.',
-    category: 'STREET WEAR'
-  }
-];
-
 const DEFAULT_FALLBACK_TRACKS = [
   {
     id: 'track1',
@@ -121,17 +91,29 @@ const HomeView = () => {
       try {
         // Fetch Exclusive Registered Artists
         try {
-          const qPinned = query(collection(db, 'users'), where('role', '==', 'artist'), limit(12));
+          const qPinned = query(collection(db, 'users'), limit(100));
           const snapPinned = await getDocs(qPinned);
-          const mappedArtists = snapPinned.docs.map(d => ({ id: d.id, ...d.data() }));
-          if (mappedArtists.length > 0) {
-            setPinnedArtists(mappedArtists);
-          } else {
-            setPinnedArtists(DEFAULT_FALLBACK_ARTISTS);
-          }
+          const rawUsers = snapPinned.docs.map(d => ({ id: d.id, ...d.data() }));
+          
+          const filteredArtists = rawUsers.filter((data: any) => {
+            const dispName = (data.displayName || '').trim();
+            const isDefaultProfile = !dispName || dispName === 'RapLife Member' || dispName === 'Artista Sin Nombre';
+            
+            return data.role === 'artist' || 
+                   data.isPinned === true || 
+                   data.isExclusive === true ||
+                   (!isDefaultProfile && (
+                     data.hasAvatar === true || 
+                     (data.avatarUrl && data.avatarUrl !== '') || 
+                     (data.photoURL && data.photoURL !== '') ||
+                     (data.avatarSelfieUrl && data.avatarSelfieUrl !== '')
+                   ));
+          });
+
+          setPinnedArtists(filteredArtists);
         } catch (pinnedErr) {
           console.warn("[HOME] Failed to fetch exclusive artists (offline fallback):", pinnedErr);
-          setPinnedArtists(DEFAULT_FALLBACK_ARTISTS);
+          setPinnedArtists([]);
         }
 
         // Fetch Recent Tracks with robust index fallback
@@ -156,7 +138,7 @@ const HomeView = () => {
         setRecentTracks(tracksList.length > 0 ? tracksList : DEFAULT_FALLBACK_TRACKS);
       } catch (e) {
         console.error("Error fetching home data:", e);
-        setPinnedArtists(DEFAULT_FALLBACK_ARTISTS);
+        setPinnedArtists([]);
         setRecentTracks(DEFAULT_FALLBACK_TRACKS);
       }
     };

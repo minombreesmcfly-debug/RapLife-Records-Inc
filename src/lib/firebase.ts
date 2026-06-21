@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, persistentSingleTabManager, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import fallbackConfig from '../../firebase-applet-config.json';
 
@@ -43,9 +43,6 @@ if (firestoreDbId && (firestoreDbId.includes('://') || firestoreDbId.includes('.
 }
 
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentSingleTabManager({})
-  }),
   experimentalForceLongPolling: true,
 }, firestoreDbId || undefined);
 export const storage = getStorage(app);

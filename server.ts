@@ -115,19 +115,23 @@ try {
   console.error('[SERVER] Error reading firebase-applet-config.json:', error);
 }
 
+// Dynamically use Environment Variables on server if available (e.g., set in Vercel)
+const serverProjectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId;
+const serverStorageBucket = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket;
+
 // Initialize Firebase Admin SDK safely (prevent double initialization)
 if (admin.apps.length === 0) {
   admin.initializeApp({
-    projectId: firebaseConfig.projectId,
-    storageBucket: firebaseConfig.storageBucket
+    projectId: serverProjectId,
+    storageBucket: serverStorageBucket
   });
 }
 
-console.log(`[SERVER] Initialized Firebase Admin for project: ${firebaseConfig.projectId}`);
-console.log(`[SERVER] Using storage bucket from config: ${firebaseConfig.storageBucket}`);
+console.log(`[SERVER] Initialized Firebase Admin for project: ${serverProjectId}`);
+console.log(`[SERVER] Using storage bucket: ${serverStorageBucket}`);
 
-// We'll try to get the bucket, but we'll also have a helper to try fallbacks if the first one fails
-let bucket = admin.storage().bucket(firebaseConfig.storageBucket);
+// We'll try to get the bucket
+let bucket = admin.storage().bucket(serverStorageBucket);
 
 async function startServer() {
   const app = express();
@@ -681,14 +685,11 @@ CRITICAL STYLING RULES:
     });
   });
 
-  // Serve uploaded local radio assets directly
+  // Serve uploaded local radio assets directly (Failsafe fallback between dist and public folders)
   const radioDevPath = path.join(process.cwd(), 'public', 'assets', 'radio');
   const radioProdPath = path.join(process.cwd(), 'dist', 'assets', 'radio');
-  const radioPath = process.env.NODE_ENV === 'production' ? radioProdPath : radioDevPath;
-  if (!fs.existsSync(radioPath)) {
-    fs.mkdirSync(radioPath, { recursive: true });
-  }
-  app.use('/assets/radio', express.static(radioPath));
+  app.use('/assets/radio', express.static(radioProdPath));
+  app.use('/assets/radio', express.static(radioDevPath));
 
   // Handle SPA and Vite
   if (process.env.NODE_ENV !== 'production') {

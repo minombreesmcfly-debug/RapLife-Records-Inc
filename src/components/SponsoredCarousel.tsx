@@ -32,14 +32,14 @@ export default function SponsoredCarousel() {
   const [artists, setArtists] = useState<SponsoredArtist[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [autoplay, setAutoplay] = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  // Load all artists with role 'artist' from db
+  // Load all artists with role 'artist' or custom-made profiles from db
   useEffect(() => {
     const fetchArtists = async () => {
       try {
         const q = query(
           collection(db, 'users'),
-          where('role', '==', 'artist'),
           limit(100)
         );
         const snap = await getDocs(q);
@@ -50,18 +50,34 @@ export default function SponsoredCarousel() {
             const data = doc.data();
             const isExclusive = data.isExclusive !== false; // defaults to true
             
-            dbArtists.push({
-              id: doc.id,
-              displayName: data.displayName || 'Artista Sin Nombre',
-              role: 'artist',
-              category: data.category || (isExclusive ? 'EXCLUSIVO RAPLIFE' : 'DESTACADO RAPLIFE'),
-              bio: data.bio || 'Exclusivo artista independiente asociado al sello discográfico.',
-              photoURL: data.photoURL || data.avatarUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
-              spotifyUrl: data.spotifyUrl || '',
-              instagramUrl: data.instagramUrl || '',
-              isExclusive: isExclusive,
-              createdAt: data.createdAt
-            } as any);
+            // Failsafe isArtist check to catch any custom profiles created by the user with or without role='artist'
+            const dispName = (data.displayName || '').trim();
+            const isDefaultProfile = !dispName || dispName === 'RapLife Member' || dispName === 'Artista Sin Nombre';
+            
+            const isArtist = data.role === 'artist' || 
+                             data.isPinned === true || 
+                             data.isExclusive === true ||
+                             (!isDefaultProfile && (
+                               data.hasAvatar === true || 
+                               (data.avatarUrl && data.avatarUrl !== '') || 
+                               (data.photoURL && data.photoURL !== '') ||
+                               (data.avatarSelfieUrl && data.avatarSelfieUrl !== '')
+                             ));
+
+            if (isArtist) {
+              dbArtists.push({
+                id: doc.id,
+                displayName: data.displayName || 'Artista Sin Nombre',
+                role: 'artist',
+                category: data.category || (isExclusive ? 'EXCLUSIVO RAPLIFE' : 'DESTACADO RAPLIFE'),
+                bio: data.bio || 'Exclusivo artista independiente asociado al sello discográfico.',
+                photoURL: data.photoURL || data.avatarUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
+                spotifyUrl: data.spotifyUrl || '',
+                instagramUrl: data.instagramUrl || '',
+                isExclusive: isExclusive,
+                createdAt: data.createdAt
+              } as any);
+            }
           });
 
           // Sort db artists: Newer (by createdAt) first
@@ -74,10 +90,13 @@ export default function SponsoredCarousel() {
           console.log("[CAROUSEL] Successfully loaded database artists:", dbArtists.map(a => a.displayName));
         }
 
-        setArtists(dbArtists);
+        // If no custom artists are found in the DB, show PLACEHOLDER_SPONSOR slide as a prompt to join
+        setArtists(dbArtists.length > 0 ? dbArtists : [PLACEHOLDER_SPONSOR]);
       } catch (e) {
         console.warn("[CAROUSEL] Database fetch error:", e);
-        setArtists([]);
+        setArtists([PLACEHOLDER_SPONSOR]);
+      } finally {
+        setLoading(false);
       }
     };
     fetchArtists();
@@ -102,6 +121,42 @@ export default function SponsoredCarousel() {
     setAutoplay(false);
     setCurrentIndex(prev => (prev + 1) % artists.length);
   };
+
+  if (loading) {
+    return (
+      <>
+        {/* Mobile Loading Skeleton */}
+        <div className="block md:hidden w-full relative bg-neutral-950/90 py-1.5 px-3 flex items-center justify-between gap-1.5 min-h-[48px]">
+          <div className="flex items-center gap-1.5 animate-pulse flex-1 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-neutral-800 shrink-0" />
+            <div className="space-y-1 flex-1 min-w-0">
+              <div className="w-20 h-2.5 bg-neutral-800 rounded" />
+              <div className="w-32 h-2 bg-neutral-800 rounded truncate" />
+            </div>
+          </div>
+          <div className="w-8 h-4 bg-neutral-800 rounded animate-pulse shrink-0" />
+        </div>
+
+        {/* Desktop Loading Skeleton */}
+        <div className="hidden md:block w-full relative bg-black/45 border-y-4 border-boombox-gray py-6 overflow-hidden boombox-texture min-h-[218px]">
+          <div className="max-w-7xl mx-auto px-4 md:px-12 w-full flex items-center justify-between gap-4 animate-pulse pt-2">
+            <div className="flex items-center gap-6 flex-grow">
+              <div className="w-28 h-28 rounded-full bg-neutral-800 border-4 border-neutral-900 shrink-0" />
+              <div className="space-y-3 flex-grow">
+                <div className="flex gap-2 items-center">
+                  <div className="w-40 h-6 bg-neutral-800 rounded" />
+                  <div className="w-24 h-4 bg-neutral-800 rounded" />
+                </div>
+                <div className="w-full h-3 bg-neutral-800 rounded" />
+                <div className="w-2/3 h-3 bg-neutral-800 rounded" />
+              </div>
+            </div>
+            <div className="w-32 h-10 bg-neutral-800 rounded shrink-0 self-center" />
+          </div>
+        </div>
+      </>
+    );
+  }
 
   if (artists.length === 0) return null;
 
