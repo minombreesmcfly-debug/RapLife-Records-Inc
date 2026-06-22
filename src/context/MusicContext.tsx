@@ -348,8 +348,45 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setDuration(0);
           if (audioRef.current) {
             audioRef.current.src = initial.audioUrl;
-            audioRef.current.autoplay = false;
-            setIsPlaying(false);
+            audioRef.current.autoplay = true;
+            setIsPlaying(true);
+
+            const playPromise = audioRef.current.play();
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => {
+                  console.log("[RADIO] Inline unmuted autoplay succeeded.");
+                })
+                .catch(err => {
+                  console.warn("[RADIO] Direct unmuted autoplay failed. Registering interaction gesture fallbacks.", err.message);
+                  
+                  // Setup interactive gesture handlers because of strict browser user-interaction autoplay rules
+                  const handleUserGestureToPlay = () => {
+                    if (audioRef.current) {
+                      audioRef.current.play()
+                        .then(() => {
+                          console.log("[RADIO] Gestured unmuted autoplay resumed successfully.");
+                          removeGestures();
+                        })
+                        .catch(gestureErr => {
+                          console.warn("[RADIO] Gesture playback attempt failed:", gestureErr.message);
+                        });
+                    } else {
+                      removeGestures();
+                    }
+                  };
+
+                  const removeGestures = () => {
+                    window.removeEventListener('click', handleUserGestureToPlay);
+                    window.removeEventListener('touchstart', handleUserGestureToPlay);
+                    window.removeEventListener('keydown', handleUserGestureToPlay);
+                  };
+
+                  window.addEventListener('click', handleUserGestureToPlay);
+                  window.addEventListener('touchstart', handleUserGestureToPlay);
+                  window.addEventListener('keydown', handleUserGestureToPlay);
+                });
+            }
           }
         }
       } catch (err) {

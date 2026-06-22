@@ -542,10 +542,56 @@ const StudioView = () => {
       }
       const reader = new FileReader();
       reader.onload = (event) => {
-        setSelfie(event.target?.result as string);
-        setAvatarUrl(null); // Clear previous generated avatar when new selfie is set
-        setSelectedOutfit(null);
-        setErrorText(null);
+        const rawUrl = event.target?.result as string;
+        
+        // Compress and resize image to prevent memory limit crashes and speed up API delivery
+        const img = new Image();
+        img.src = rawUrl;
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const maxDimension = 1024;
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > maxDimension || height > maxDimension) {
+              if (width > height) {
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
+              } else {
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              // Medium-high quality image compression (0.8) drastically decreases payload size while keeping crisp details
+              const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+              setSelfie(compressedBase64);
+              setAvatarUrl(null);
+              setSelectedOutfit(null);
+              setErrorText(null);
+            } else {
+              setSelfie(rawUrl);
+              setAvatarUrl(null);
+              setSelectedOutfit(null);
+            }
+          } catch (canvasErr) {
+            console.warn("[STUDIO] Canvas compression fallback:", canvasErr);
+            setSelfie(rawUrl);
+            setAvatarUrl(null);
+            setSelectedOutfit(null);
+          }
+        };
+        img.onerror = () => {
+          setSelfie(rawUrl);
+          setAvatarUrl(null);
+          setSelectedOutfit(null);
+        };
       };
       reader.readAsDataURL(file);
     }
