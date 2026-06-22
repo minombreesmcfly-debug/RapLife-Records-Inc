@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, ChevronLeft, ChevronRight, Music, Heart, Disc, ExternalLink } from 'lucide-react';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, signInWithGoogle } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 
 interface SponsoredArtist {
@@ -19,43 +19,15 @@ interface SponsoredArtist {
 
 const PLACEHOLDER_SPONSOR: SponsoredArtist = {
   id: 'placeholder_join',
-  displayName: 'Únete a Rapify Records',
+  displayName: 'Rap Life Records',
   role: 'artist',
-  category: 'REGÍSTRATE TU PERFIL',
-  bio: 'Regístrate tu perfil de artista desde la plataforma para aparecer en esta sección, sincronizar tu Spotify y viralizar tus canciones.',
-  photoURL: '/assets/Logo.png',
+  category: 'ÚNETE A LA REVOLUCIÓN',
+  bio: 'Únete a Rap Life Records. Regístrate o inicia sesión en la parte superior para acumular puntos, participar en el chat colectivo y registrar tu propio álbum o canción.',
+  photoURL: '/assets/logo.png',
   instagramUrl: '#'
 };
 
-const DEFAULT_FALLBACK_ARTISTS = [
-  {
-    id: 'artist_mcfly_emece',
-    displayName: 'McFly Emece',
-    role: 'artist',
-    bio: 'Leyenda del rap under, flow filoso, productor de la vieja escuela con visión futurista.',
-    photoURL: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=400&auto=format&fit=crop',
-    isExclusive: true,
-    category: 'DESTACADO RAPLIFE'
-  },
-  {
-    id: 'artist_ghetto_queen',
-    displayName: 'La Ghetto Queen',
-    role: 'artist',
-    bio: 'Barras crudas, ritmos pesados y lírica feminista que domina las calles del ghetto.',
-    photoURL: 'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?q=80&w=400&auto=format&fit=crop',
-    isExclusive: true,
-    category: 'EXCLUSIVO RAPLIFE'
-  },
-  {
-    id: 'artist_street_poet',
-    displayName: 'Street Poet',
-    role: 'artist',
-    bio: 'Poesía callejera pura, contundencia y rimas que retratan la realidad oculta de los callejones.',
-    photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=400&auto=format&fit=crop',
-    isExclusive: false,
-    category: 'NUEVO TALENTO'
-  }
-];
+const DEFAULT_FALLBACK_ARTISTS: SponsoredArtist[] = [];
 
 export default function SponsoredCarousel() {
   const { profile } = useAuth();
@@ -120,16 +92,18 @@ export default function SponsoredCarousel() {
           console.log("[CAROUSEL] Successfully loaded database artists:", dbArtists.map(a => a.displayName));
         }
 
-        // If no custom artists are found in the DB, default to DEFAULT_FALLBACK_ARTISTS so the cover is never empty
-        const baseArtists = dbArtists.length > 0 ? dbArtists : DEFAULT_FALLBACK_ARTISTS;
-        
-        // If they are not logged in, prepend the PLACEHOLDER_SPONSOR registration/banner slide!
-        const finalArtists = !profile ? [PLACEHOLDER_SPONSOR, ...baseArtists] : baseArtists;
+        // If they are not logged in, show ONLY the primary sign-up card.
+        // Once logged in, show ONLY the custom database artists added by the user. If none exist, fallback to the primary card.
+        let finalArtists: SponsoredArtist[] = [];
+        if (!profile) {
+          finalArtists = [PLACEHOLDER_SPONSOR];
+        } else {
+          finalArtists = dbArtists.length > 0 ? dbArtists : [PLACEHOLDER_SPONSOR];
+        }
         setArtists(finalArtists);
       } catch (e) {
         console.warn("[CAROUSEL] Database fetch error:", e);
-        // Fallback gracefully (unauthenticated/offline friendly)
-        const finalArtists = !profile ? [PLACEHOLDER_SPONSOR, ...DEFAULT_FALLBACK_ARTISTS] : DEFAULT_FALLBACK_ARTISTS;
+        const finalArtists = [PLACEHOLDER_SPONSOR];
         setArtists(finalArtists);
       } finally {
         setLoading(false);
@@ -250,16 +224,40 @@ export default function SponsoredCarousel() {
 
         {/* Actions & Pagination Navigation */}
         <div className="flex items-center gap-1 shrink-0">
-          {activeArtist.spotifyUrl && (
-            <a
-              href={activeArtist.spotifyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-6 h-6 flex items-center justify-center rounded-full bg-[#1DB954] hover:bg-[#1ed760] active:scale-90 transition-all shadow-md shrink-0"
-              title="Spotify"
+          {activeArtist.id === 'placeholder_join' ? (
+            <button
+              onClick={async () => {
+                try {
+                  await signInWithGoogle();
+                } catch (err) {
+                  console.error("Popup login error, trying redirect fallback:", err);
+                  try {
+                    const { signInWithGoogleRedirect } = await import('../lib/firebase');
+                    await signInWithGoogleRedirect();
+                  } catch (redirectErr) {
+                    console.error("Redirect fallback failed:", redirectErr);
+                  }
+                }
+              }}
+              className="px-2 py-1 bg-brand-yellow hover:bg-yellow-400 text-black font-black uppercase text-[6.5px] rounded tracking-wider flex items-center gap-0.5 whitespace-nowrap cursor-pointer active:scale-95 transition-transform"
             >
-              <Music size={10} fill="black" className="text-black" />
-            </a>
+              <Sparkles size={7} />
+              <span>UNIRTE</span>
+            </button>
+          ) : (
+            <>
+              {activeArtist.spotifyUrl && (
+                <a
+                  href={activeArtist.spotifyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-6 h-6 flex items-center justify-center rounded-full bg-[#1DB954] hover:bg-[#1ed760] active:scale-90 transition-all shadow-md shrink-0"
+                  title="Spotify"
+                >
+                  <Music size={10} fill="black" className="text-black" />
+                </a>
+              )}
+            </>
           )}
           
           <div className="flex items-center gap-0.5 bg-white/5 p-0.5 rounded-full border border-white/5 shrink-0 ml-0.5">
@@ -379,27 +377,51 @@ export default function SponsoredCarousel() {
 
                 {/* ACTION LINKS */}
                 <div className="md:col-span-3 flex flex-row md:flex-col gap-2 justify-center md:justify-end md:items-end w-full">
-                  {activeArtist.spotifyUrl && (
-                    <a
-                      href={activeArtist.spotifyUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 bg-[#1DB954] hover:bg-[#1ed760] text-black font-black uppercase text-[8.5px] tracking-wider px-3.5 py-2.5 rounded-lg transition-all scale-95 hover:scale-100 shadow-glow"
+                  {activeArtist.id === 'placeholder_join' ? (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await signInWithGoogle();
+                        } catch (err) {
+                          console.error("Popup login error, trying redirect fallback:", err);
+                          try {
+                            const { signInWithGoogleRedirect } = await import('../lib/firebase');
+                            await signInWithGoogleRedirect();
+                          } catch (redirectErr) {
+                            console.error("Redirect fallback failed:", redirectErr);
+                          }
+                        }
+                      }}
+                      className="flex items-center gap-1.5 bg-brand-yellow hover:bg-yellow-400 text-black font-black uppercase text-[9px] tracking-wider px-4 py-2.5 rounded-lg transition-all scale-95 hover:scale-100 cursor-pointer shadow-[0_4px_12px_rgba(247,250,5,0.25)]"
                     >
-                      <Music size={11} fill="black" />
-                      <span>ESCUCHAR SPOTIFY</span>
-                    </a>
-                  )}
-                  {activeArtist.instagramUrl && (
-                    <a
-                      href={activeArtist.instagramUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 bg-neutral-900 hover:bg-neutral-850 hover:border-white/10 text-white font-black uppercase text-[8.5px] tracking-wider px-3.5 py-2.5 rounded-lg border border-white/5 transition-all scale-95 hover:scale-100"
-                    >
-                      <ExternalLink size={11} />
-                      <span>VER REDES</span>
-                    </a>
+                      <Sparkles size={11} />
+                      <span>UNIRSE AHORA (GOOGLE)</span>
+                    </button>
+                  ) : (
+                    <>
+                      {activeArtist.spotifyUrl && (
+                        <a
+                          href={activeArtist.spotifyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 bg-[#1DB954] hover:bg-[#1ed760] text-black font-black uppercase text-[8.5px] tracking-wider px-3.5 py-2.5 rounded-lg transition-all scale-95 hover:scale-100 shadow-glow"
+                        >
+                          <Music size={11} fill="black" />
+                          <span>ESCUCHAR SPOTIFY</span>
+                        </a>
+                      )}
+                      {activeArtist.instagramUrl && (
+                        <a
+                          href={activeArtist.instagramUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 bg-neutral-900 hover:bg-neutral-850 hover:border-white/10 text-white font-black uppercase text-[8.5px] tracking-wider px-3.5 py-2.5 rounded-lg border border-white/5 transition-all scale-95 hover:scale-100"
+                        >
+                          <ExternalLink size={11} />
+                          <span>VER REDES</span>
+                        </a>
+                      )}
+                    </>
                   )}
                 </div>
               </motion.div>
