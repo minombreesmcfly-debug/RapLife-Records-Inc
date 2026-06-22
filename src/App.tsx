@@ -246,7 +246,7 @@ const LandingPage = () => {
           <div className="absolute inset-0 z-0">
             <img 
               referrerPolicy="no-referrer"
-              src="/assets/banner.png" 
+              src="/assets/Banner.png" 
               alt="RapLife Background Banner" 
               className="w-full h-full object-cover opacity-15 filter saturate-75 contrast-125 scale-105"
             />
@@ -258,7 +258,7 @@ const LandingPage = () => {
           <div className="relative z-10 flex flex-col items-center gap-6 max-w-3xl animate-fade-in">
             <img 
               referrerPolicy="no-referrer"
-              src="/assets/logo.png" 
+              src="/assets/Logo.png" 
               alt="RapLife Records Logo" 
               className="w-44 md:w-64 object-contain filter drop-shadow-[0_8px_20px_rgba(247,250,5,0.25)]"
             />

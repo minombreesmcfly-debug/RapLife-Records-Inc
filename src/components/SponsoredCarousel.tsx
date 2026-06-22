@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, ChevronLeft, ChevronRight, Music, Heart, Disc, ExternalLink } from 'lucide-react';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
@@ -23,7 +24,17 @@ const PLACEHOLDER_SPONSOR: SponsoredArtist = {
   role: 'artist',
   category: 'ÚNETE A LA REVOLUCIÓN',
   bio: 'Únete a Rap Life Records. Regístrate o inicia sesión en la parte superior para acumular puntos, participar en el chat colectivo y registrar tu propio álbum o canción.',
-  photoURL: '/assets/logo.png',
+  photoURL: '/assets/Logo.png',
+  instagramUrl: '#'
+};
+
+const USER_PLACEHOLDER_SPONSOR: SponsoredArtist = {
+  id: 'placeholder_join',
+  displayName: 'Rap Life Records',
+  role: 'artist',
+  category: '★ MIEMBRO VIP / SOCIO ★',
+  bio: '¡Te damos la bienvenida a la discográfica! Ya formas parte de Rap Life Records. Participa en el chat colectivo, acumula puntos de calle o sube tu propia canción o álbum en la sección superior.',
+  photoURL: '/assets/Logo.png',
   instagramUrl: '#'
 };
 
@@ -93,17 +104,17 @@ export default function SponsoredCarousel() {
         }
 
         // If they are not logged in, show ONLY the primary sign-up card.
-        // Once logged in, show ONLY the custom database artists added by the user. If none exist, fallback to the primary card.
+        // Once logged in, we show the member status card AND then any custom database artists they added.
         let finalArtists: SponsoredArtist[] = [];
         if (!profile) {
           finalArtists = [PLACEHOLDER_SPONSOR];
         } else {
-          finalArtists = dbArtists.length > 0 ? dbArtists : [PLACEHOLDER_SPONSOR];
+          finalArtists = [USER_PLACEHOLDER_SPONSOR, ...dbArtists];
         }
         setArtists(finalArtists);
       } catch (e) {
         console.warn("[CAROUSEL] Database fetch error:", e);
-        const finalArtists = [PLACEHOLDER_SPONSOR];
+        const finalArtists = profile ? [USER_PLACEHOLDER_SPONSOR] : [PLACEHOLDER_SPONSOR];
         setArtists(finalArtists);
       } finally {
         setLoading(false);
@@ -225,25 +236,31 @@ export default function SponsoredCarousel() {
         {/* Actions & Pagination Navigation */}
         <div className="flex items-center gap-1 shrink-0">
           {activeArtist.id === 'placeholder_join' ? (
-            <button
-              onClick={async () => {
-                try {
-                  await signInWithGoogle();
-                } catch (err) {
-                  console.error("Popup login error, trying redirect fallback:", err);
+            profile ? (
+              <span className="px-2 py-1 bg-brand-yellow/10 border border-brand-yellow/30 text-brand-yellow font-black uppercase text-[6.5px] rounded tracking-wider flex items-center gap-0.5 whitespace-nowrap">
+                ★ VIP MEMBER ★
+              </span>
+            ) : (
+              <button
+                onClick={async () => {
                   try {
-                    const { signInWithGoogleRedirect } = await import('../lib/firebase');
-                    await signInWithGoogleRedirect();
-                  } catch (redirectErr) {
-                    console.error("Redirect fallback failed:", redirectErr);
+                    await signInWithGoogle();
+                  } catch (err) {
+                    console.error("Popup login error, trying redirect fallback:", err);
+                    try {
+                      const { signInWithGoogleRedirect } = await import('../lib/firebase');
+                      await signInWithGoogleRedirect();
+                    } catch (redirectErr) {
+                      console.error("Redirect fallback failed:", redirectErr);
+                    }
                   }
-                }
-              }}
-              className="px-2 py-1 bg-brand-yellow hover:bg-yellow-400 text-black font-black uppercase text-[6.5px] rounded tracking-wider flex items-center gap-0.5 whitespace-nowrap cursor-pointer active:scale-95 transition-transform"
-            >
-              <Sparkles size={7} />
-              <span>UNIRTE</span>
-            </button>
+                }}
+                className="px-2 py-1 bg-brand-yellow hover:bg-yellow-400 text-black font-black uppercase text-[6.5px] rounded tracking-wider flex items-center gap-0.5 whitespace-nowrap cursor-pointer active:scale-95 transition-transform"
+              >
+                <Sparkles size={7} />
+                <span>UNIRTE</span>
+              </button>
+            )
           ) : (
             <>
               {activeArtist.spotifyUrl && (
@@ -378,25 +395,35 @@ export default function SponsoredCarousel() {
                 {/* ACTION LINKS */}
                 <div className="md:col-span-3 flex flex-row md:flex-col gap-2 justify-center md:justify-end md:items-end w-full">
                   {activeArtist.id === 'placeholder_join' ? (
-                    <button
-                      onClick={async () => {
-                        try {
-                          await signInWithGoogle();
-                        } catch (err) {
-                          console.error("Popup login error, trying redirect fallback:", err);
+                    profile ? (
+                      <Link
+                        to="/studio"
+                        className="flex items-center justify-center gap-1.5 bg-brand-yellow hover:bg-yellow-400 text-black font-black uppercase text-[9px] tracking-wider px-4 py-2.5 rounded-lg transition-all scale-95 hover:scale-100 cursor-pointer shadow-[0_4px_12px_rgba(247,250,5,0.25)]"
+                      >
+                        <Sparkles size={11} />
+                        <span>IR A ESTUDIO DE AVATAR</span>
+                      </Link>
+                    ) : (
+                      <button
+                        onClick={async () => {
                           try {
-                            const { signInWithGoogleRedirect } = await import('../lib/firebase');
-                            await signInWithGoogleRedirect();
-                          } catch (redirectErr) {
-                            console.error("Redirect fallback failed:", redirectErr);
+                            await signInWithGoogle();
+                          } catch (err) {
+                            console.error("Popup login error, trying redirect fallback:", err);
+                            try {
+                              const { signInWithGoogleRedirect } = await import('../lib/firebase');
+                              await signInWithGoogleRedirect();
+                            } catch (redirectErr) {
+                              console.error("Redirect fallback failed:", redirectErr);
+                            }
                           }
-                        }
-                      }}
-                      className="flex items-center gap-1.5 bg-brand-yellow hover:bg-yellow-400 text-black font-black uppercase text-[9px] tracking-wider px-4 py-2.5 rounded-lg transition-all scale-95 hover:scale-100 cursor-pointer shadow-[0_4px_12px_rgba(247,250,5,0.25)]"
-                    >
-                      <Sparkles size={11} />
-                      <span>UNIRSE AHORA (GOOGLE)</span>
-                    </button>
+                        }}
+                        className="flex items-center gap-1.5 bg-brand-yellow hover:bg-yellow-400 text-black font-black uppercase text-[9px] tracking-wider px-4 py-2.5 rounded-lg transition-all scale-95 hover:scale-100 cursor-pointer shadow-[0_4px_12px_rgba(247,250,5,0.25)]"
+                      >
+                        <Sparkles size={11} />
+                        <span>UNIRSE AHORA (GOOGLE)</span>
+                      </button>
+                    )
                   ) : (
                     <>
                       {activeArtist.spotifyUrl && (
