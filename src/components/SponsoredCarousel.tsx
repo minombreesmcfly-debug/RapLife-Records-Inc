@@ -19,13 +19,43 @@ interface SponsoredArtist {
 
 const PLACEHOLDER_SPONSOR: SponsoredArtist = {
   id: 'placeholder_join',
-  displayName: 'Únete a RapLife Records',
+  displayName: 'Únete a Rapify Records',
   role: 'artist',
-  category: 'PRÓXIMO TALENTO',
-  bio: 'Registra tu perfil de artista desde la plataforma para aparecer en esta sección, sincronizar tu Spotify y viralizar tus canciones.',
-  photoURL: 'https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?q=80&w=600&auto=format&fit=crop',
+  category: 'REGÍSTRATE TU PERFIL',
+  bio: 'Regístrate tu perfil de artista desde la plataforma para aparecer en esta sección, sincronizar tu Spotify y viralizar tus canciones.',
+  photoURL: '/assets/Logo.png',
   instagramUrl: '#'
 };
+
+const DEFAULT_FALLBACK_ARTISTS = [
+  {
+    id: 'artist_mcfly_emece',
+    displayName: 'McFly Emece',
+    role: 'artist',
+    bio: 'Leyenda del rap under, flow filoso, productor de la vieja escuela con visión futurista.',
+    photoURL: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=400&auto=format&fit=crop',
+    isExclusive: true,
+    category: 'DESTACADO RAPLIFE'
+  },
+  {
+    id: 'artist_ghetto_queen',
+    displayName: 'La Ghetto Queen',
+    role: 'artist',
+    bio: 'Barras crudas, ritmos pesados y lírica feminista que domina las calles del ghetto.',
+    photoURL: 'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?q=80&w=400&auto=format&fit=crop',
+    isExclusive: true,
+    category: 'EXCLUSIVO RAPLIFE'
+  },
+  {
+    id: 'artist_street_poet',
+    displayName: 'Street Poet',
+    role: 'artist',
+    bio: 'Poesía callejera pura, contundencia y rimas que retratan la realidad oculta de los callejones.',
+    photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=400&auto=format&fit=crop',
+    isExclusive: false,
+    category: 'NUEVO TALENTO'
+  }
+];
 
 export default function SponsoredCarousel() {
   const { profile } = useAuth();
@@ -90,17 +120,23 @@ export default function SponsoredCarousel() {
           console.log("[CAROUSEL] Successfully loaded database artists:", dbArtists.map(a => a.displayName));
         }
 
-        // If no custom artists are found in the DB, show PLACEHOLDER_SPONSOR slide as a prompt to join
-        setArtists(dbArtists.length > 0 ? dbArtists : [PLACEHOLDER_SPONSOR]);
+        // If no custom artists are found in the DB, default to DEFAULT_FALLBACK_ARTISTS so the cover is never empty
+        const baseArtists = dbArtists.length > 0 ? dbArtists : DEFAULT_FALLBACK_ARTISTS;
+        
+        // If they are not logged in, prepend the PLACEHOLDER_SPONSOR registration/banner slide!
+        const finalArtists = !profile ? [PLACEHOLDER_SPONSOR, ...baseArtists] : baseArtists;
+        setArtists(finalArtists);
       } catch (e) {
         console.warn("[CAROUSEL] Database fetch error:", e);
-        setArtists([PLACEHOLDER_SPONSOR]);
+        // Fallback gracefully (unauthenticated/offline friendly)
+        const finalArtists = !profile ? [PLACEHOLDER_SPONSOR, ...DEFAULT_FALLBACK_ARTISTS] : DEFAULT_FALLBACK_ARTISTS;
+        setArtists(finalArtists);
       } finally {
         setLoading(false);
       }
     };
     fetchArtists();
-  }, []);
+  }, [profile]);
 
   // Autoplay intervals
   useEffect(() => {
@@ -176,16 +212,23 @@ export default function SponsoredCarousel() {
     <>
       {/* MOBILE COMPACT RIBBON VIEW */}
       <div 
-        className="block md:hidden w-full relative bg-neutral-950/90 py-1.5 px-3 flex items-center justify-between gap-1.5 overflow-hidden select-none"
+        className="block md:hidden w-full relative py-1.5 px-3 flex items-center justify-between gap-1.5 overflow-hidden select-none"
+        style={activeArtist.id === 'placeholder_join' ? {
+          backgroundImage: `linear-gradient(to right, rgba(0,0,0,0.9), rgba(0,0,0,0.65), rgba(0,0,0,0.9)), url('/assets/Banner.png')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        } : {
+          backgroundColor: 'rgb(10 10 10 / 0.9)',
+        }}
         onTouchStart={() => setAutoplay(false)}
       >
         <div className="flex items-center gap-1.5 overflow-hidden flex-nowrap flex-1">
           {/* Avatar (small circle) */}
-          <div className="relative w-8 h-8 rounded-full overflow-hidden border border-brand-yellow/30 shrink-0">
+          <div className="relative w-8 h-8 rounded-full overflow-hidden border border-brand-yellow/30 shrink-0 bg-black/40">
             <img 
               referrerPolicy="no-referrer"
               src={activeArtist.photoURL} 
-              className="w-full h-full object-cover" 
+              className={`w-full h-full ${activeArtist.id === 'placeholder_join' ? 'object-contain p-1' : 'object-cover'}`}
               alt={activeArtist.displayName} 
             />
           </div>
@@ -241,7 +284,14 @@ export default function SponsoredCarousel() {
 
       {/* DESKTOP FULL BOOMBOX VIEW */}
       <div 
-        className="hidden md:block w-full relative bg-black/45 border-y-4 border-boombox-gray py-6 overflow-hidden boombox-texture select-none"
+        className="hidden md:block w-full relative border-y-4 border-boombox-gray py-6 overflow-hidden boombox-texture select-none"
+        style={activeArtist.id === 'placeholder_join' ? {
+          backgroundImage: `linear-gradient(to right, rgba(0,0,0,0.85), rgba(0,0,0,0.45), rgba(0,0,0,0.85)), url('/assets/Banner.png')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        } : {
+          backgroundColor: 'rgb(0 0 0 / 0.45)',
+        }}
         onMouseEnter={() => setAutoplay(false)}
         onMouseLeave={() => setAutoplay(true)}
         id="sponsored-artists-reel"
@@ -289,15 +339,15 @@ export default function SponsoredCarousel() {
               >
                 {/* IMAGE ELEMENT */}
                 <div className="md:col-span-3 flex justify-center">
-                  <div className="relative w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-neutral-900 shadow-2xl shrink-0 group">
+                  <div className="relative w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-neutral-900 shadow-2xl shrink-0 group bg-neutral-950/80">
                     <img 
                       referrerPolicy="no-referrer"
                       src={activeArtist.photoURL} 
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                      className={`w-full h-full ${activeArtist.id === 'placeholder_join' ? 'object-contain p-3 md:p-4' : 'object-cover'} group-hover:scale-110 transition-transform duration-500`}
                       alt={activeArtist.displayName} 
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-2">
-                      <span className="bg-brand-yellow text-black text-[6.5px] font-black uppercase px-2 py-0.5 rounded-full">RAP ARTIST</span>
+                       <span className="bg-brand-yellow text-black text-[6.5px] font-black uppercase px-2 py-0.5 rounded-full">RAP ARTIST</span>
                     </div>
                     {/* Speaker-grill border circle */}
                     <div className="absolute inset-0 rounded-full border-2 border-black/40 pointer-events-none" />

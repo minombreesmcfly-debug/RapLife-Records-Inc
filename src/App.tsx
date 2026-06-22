@@ -183,36 +183,50 @@ const SectionHeader = ({ title, icon: Icon, center = true }: { title: string, ic
 );
 
 const RadioStrip = () => {
-  const { currentTrack, isPlaying } = useMusic();
+  const { currentTrack, isPlaying, togglePlay } = useMusic();
 
   return (
     <div className="bg-black border-b-2 border-brand-yellow/20 py-2 px-4 shadow-lg fixed top-[68px] md:top-[104px] left-0 right-0 z-[90] overflow-hidden">
       <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2 md:gap-3 shrink-0">
-          <div className="w-2 h-2 rounded-full bg-brand-green animate-pulse shadow-[0_0_8px_#39ff14]" />
-          <span className="text-[10px] md:text-xs font-black italic uppercase tracking-tighter text-brand-green">RADIO REPLAY ON</span>
-        </div>
+        <button 
+          onClick={togglePlay}
+          className="flex items-center gap-2 md:gap-3 shrink-0 cursor-pointer active:scale-95 group/strip"
+        >
+          <div className={`w-2.5 h-2.5 rounded-full ${isPlaying ? 'bg-brand-green animate-pulse shadow-[0_0_8px_#39ff14]' : 'bg-amber-500 shadow-[0_0_8px_#f59e0b]'}`} />
+          <span className="text-[10px] md:text-xs font-black italic uppercase tracking-tighter text-brand-green group-hover/strip:text-brand-yellow transition-colors">
+            {isPlaying ? 'RADIO ON-AIR' : 'RADIO PAUSED'}
+          </span>
+        </button>
         
-        <div className="flex-grow overflow-hidden whitespace-nowrap">
+        <div className="flex-grow overflow-hidden whitespace-nowrap cursor-pointer" onClick={togglePlay}>
            <div className="inline-block animate-marquee-slower text-[9px] md:text-xs font-mono uppercase tracking-[0.2em] text-brand-green/80">
              {currentTrack 
-               ? `SONANDO: ${currentTrack.title} — ARTISTA: ${currentTrack.artistName} — EMISIÓN EN VIVO DESDE EL CORAZÓN DE LA CALLE — 99.1 FM ST — COMPARTIDAS CON LA NUBE`
+               ? (isPlaying 
+                   ? `SONANDO: ${currentTrack.title} — ARTISTA: ${currentTrack.artistName} — EMISIÓN EN VIVO DESDE EL CORAZÓN DE LA CALLE — 99.1 FM ST — COMPARTIDAS CON LA NUBE`
+                   : `SINTONIZADO: ${currentTrack.title} — EMISIÓN EN PAUSA (HAZ CLIC AQUÍ O EN EL DISPLAY LCD PARA REPRODUCIR LA EMISIÓN📻) —`
+                 )
                : 'EMISIÓN EN VIVO DESDE EL CORAZÓN DE LA CALLE — 99.1 FM ST — LA SINTONÍA QUE MUEVE EL GHETTO —'
              }
            </div>
         </div>
 
         <div className="hidden md:flex items-center gap-4 shrink-0">
-           <div className="flex gap-1 h-3 items-end">
-              {isPlaying && [1,2,3,4,5,6].map(i => (
+           <button 
+             onClick={togglePlay} 
+             title={isPlaying ? "Pausar Radio" : "Play Radio"}
+             className="flex gap-1 h-3 items-end hover:scale-115 transition-transform cursor-pointer"
+           >
+              {isPlaying ? [1,2,3,4,5,6].map(i => (
                 <motion.div 
                   key={i} 
                   className="w-0.5 bg-brand-green" 
                   animate={{ height: [4, 12, 8, 14, 6] }}
                   transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.1 }}
                 />
-              ))}
-           </div>
+              )) : (
+                <span className="text-[9px] font-mono text-amber-500 uppercase font-black tracking-widest hover:text-brand-yellow transition-colors">[HAZ CLIC PLAY]</span>
+              )}
+           </button>
            <span className="text-[10px] font-mono text-brand-green/40">100% SIGNAL</span>
         </div>
       </div>
@@ -220,42 +234,87 @@ const RadioStrip = () => {
   );
 };
 
-const LandingPage = () => (
-  <div className="max-w-6xl mx-auto px-2 md:px-0 pt-4 md:pt-6 space-y-20 md:space-y-32">
-    {/* PORTADA PRINCIPAL DE ARTISTAS DESTACADOS */}
-    <div className="bg-black/45 md:bg-black/40 border-2 md:border-4 border-boombox-gray rounded-2xl md:rounded-[3rem] overflow-hidden shadow-2xl relative boombox-texture">
-      <SponsoredCarousel />
-    </div>
+const LandingPage = () => {
+  const { user } = useAuth();
 
-    {/* GAME SECTION (PLATFORMER) */}
-    <section id="game" className="scroll-mt-24 md:scroll-mt-32">
-      <SectionHeader title="DESAFÍO CALLEJERO" icon={Gamepad2} />
-      <div className="bg-black border-4 md:border-8 border-boombox-gray rounded-[2.5rem] md:rounded-[3rem] overflow-hidden shadow-2xl relative boombox-texture min-h-[400px]">
-        <GameView />
-        {/* Screws */}
-        <div className="absolute top-4 left-4 w-3 h-3 rounded-full bg-boombox-gray border-2 md:border-4 border-black transition-transform hover:rotate-45" />
-        <div className="absolute top-4 right-4 w-3 h-3 rounded-full bg-boombox-gray border-2 md:border-4 border-black transition-transform hover:rotate-45" />
-        <div className="absolute bottom-4 left-4 w-3 h-3 rounded-full bg-boombox-gray border-2 md:border-4 border-black transition-transform hover:rotate-45" />
-        <div className="absolute bottom-4 right-4 w-3 h-3 rounded-full bg-boombox-gray border-2 md:border-4 border-black transition-transform hover:rotate-45" />
+  return (
+    <div className="max-w-6xl mx-auto px-2 md:px-0 pt-4 md:pt-6 space-y-20 md:space-y-32">
+      {/* GUEST HERO BANNER & LOGO */}
+      {!user && (
+        <div className="relative w-full rounded-2xl md:rounded-[3.5rem] overflow-hidden border-2 md:border-4 border-boombox-gray bg-black/90 p-8 md:p-14 transition-all flex flex-col items-center justify-center text-center gap-6 min-h-[350px] md:min-h-[460px] shadow-2xl">
+          {/* Banner as background layer */}
+          <div className="absolute inset-0 z-0">
+            <img 
+              referrerPolicy="no-referrer"
+              src="/assets/banner.png" 
+              alt="RapLife Background Banner" 
+              className="w-full h-full object-cover opacity-15 filter saturate-75 contrast-125 scale-105"
+            />
+            {/* Dark vignette overlay */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/30 to-black" />
+          </div>
+
+          {/* Logo as main brand identity */}
+          <div className="relative z-10 flex flex-col items-center gap-6 max-w-3xl animate-fade-in">
+            <img 
+              referrerPolicy="no-referrer"
+              src="/assets/logo.png" 
+              alt="RapLife Records Logo" 
+              className="w-44 md:w-64 object-contain filter drop-shadow-[0_8px_20px_rgba(247,250,5,0.25)]"
+            />
+            <div className="space-y-3">
+              <h1 className="text-3xl md:text-5xl font-black italic uppercase tracking-tighter text-brand-yellow">
+                BIENVENIDO A RAPLIFE RECORDS
+              </h1>
+              <p className="text-[10px] md:text-xs font-black uppercase text-gray-400 tracking-widest leading-relaxed max-w-2xl mx-auto">
+                LA CORONA DEL RAP UNDERGROUND. REGÍSTRATE O INICIA SESIÓN EN LA PARTE SUPERIOR PARA ACUMULAR PUNTOS, PARTICIPAR EN EL CHAT COLECTIVO, Y REGISTRAR TU PROPIO ÁLBUM O CANCIÓN EN NUESTROS SISTEMAS.
+              </p>
+            </div>
+          </div>
+
+          {/* Retro corner screws */}
+          <div className="absolute top-4 left-4 w-2 h-2 rounded-full bg-boombox-gray/30 border border-black/40" />
+          <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-boombox-gray/30 border border-black/40" />
+          <div className="absolute bottom-4 left-4 w-2 h-2 rounded-full bg-boombox-gray/30 border border-black/40" />
+          <div className="absolute bottom-4 right-4 w-2 h-2 rounded-full bg-boombox-gray/30 border border-black/40" />
+        </div>
+      )}
+
+      {/* PORTADA PRINCIPAL DE ARTISTAS DESTACADOS */}
+      <div className="bg-black/45 md:bg-black/40 border-2 md:border-4 border-boombox-gray rounded-2xl md:rounded-[3rem] overflow-hidden shadow-2xl relative boombox-texture">
+        <SponsoredCarousel />
       </div>
-    </section>
 
-    {/* SPOTIFY & VINILO SECTION */}
-    <section id="spotify-vinyl" className="scroll-mt-24 md:scroll-mt-32">
-      <SectionHeader title="VINILO DIGITAL & SPOTIFY" icon={Radio} />
-      <SpotifyTurntable />
-    </section>
+      {/* GAME SECTION (PLATFORMER) */}
+      <section id="game" className="scroll-mt-24 md:scroll-mt-32">
+        <SectionHeader title="DESAFÍO CALLEJERO" icon={Gamepad2} />
+        <div className="bg-black border-4 md:border-8 border-boombox-gray rounded-[2.5rem] md:rounded-[3rem] overflow-hidden shadow-2xl relative boombox-texture min-h-[400px]">
+          <GameView />
+          {/* Screws */}
+          <div className="absolute top-4 left-4 w-3 h-3 rounded-full bg-boombox-gray border-2 md:border-4 border-black transition-transform hover:rotate-45" />
+          <div className="absolute top-4 right-4 w-3 h-3 rounded-full bg-boombox-gray border-2 md:border-4 border-black transition-transform hover:rotate-45" />
+          <div className="absolute bottom-4 left-4 w-3 h-3 rounded-full bg-boombox-gray border-2 md:border-4 border-black transition-transform hover:rotate-45" />
+          <div className="absolute bottom-4 right-4 w-3 h-3 rounded-full bg-boombox-gray border-2 md:border-4 border-black transition-transform hover:rotate-45" />
+        </div>
+      </section>
 
-    {/* FEED SECTION */}
-    <section id="music" className="scroll-mt-48 md:scroll-mt-56">
-      <HomeView />
-    </section>
-  </div>
-);
+      {/* SPOTIFY & VINILO SECTION */}
+      <section id="spotify-vinyl" className="scroll-mt-24 md:scroll-mt-32">
+        <SectionHeader title="VINILO DIGITAL & SPOTIFY" icon={Radio} />
+        <SpotifyTurntable />
+      </section>
+
+      {/* FEED SECTION */}
+      <section id="music" className="scroll-mt-48 md:scroll-mt-56">
+        <HomeView />
+      </section>
+    </div>
+  );
+};
 
 const AppContent = () => {
   const { user, profile, loading, isAdmin } = useAuth();
-  const { currentTrack, isMuted, toggleMute } = useMusic();
+  const { currentTrack, isMuted, toggleMute, isPlaying, togglePlay } = useMusic();
   const [loginError, setLoginError] = React.useState<any | null>(null);
   const [isLoginPending, setIsLoginPending] = React.useState(false);
   const [showLoginModal, setShowLoginModal] = React.useState(false);
@@ -336,9 +395,9 @@ const AppContent = () => {
           {/* LEFT: BRANDING */}
           <div className="flex items-center">
             <Link to="/" className="flex items-center gap-2 md:gap-3 group">
-              <div className="w-10 h-10 md:w-16 md:h-16 bg-brand-dark rounded-full border-2 md:border-4 border-black speaker-grill flex items-center justify-center shadow-inner relative overflow-hidden group-hover:scale-105 transition-transform">
-                 <div className="w-8 h-8 md:w-12 md:h-12 bg-brand-yellow/20 rounded-full animate-ping absolute" />
-                 <div className="w-5 h-5 md:w-8 md:h-8 bg-brand-yellow rounded-full shadow-glow relative z-10" />
+              <div className="w-10 h-10 md:w-16 md:h-16 bg-black rounded-full border-2 md:border-4 border-brand-yellow/30 speaker-grill flex items-center justify-center shadow-inner relative overflow-hidden group-hover:scale-105 transition-transform bg-neutral-950">
+                 <img src="/assets/Logo.png" alt="RapLife Logo" className="w-[85%] h-[85%] object-contain relative z-10" />
+                 <div className="w-full h-full bg-brand-yellow/10 rounded-full animate-pulse absolute inset-0" />
               </div>
               <div className="text-left">
                 <h1 className="text-lg md:text-3xl font-black tracking-tighter glow-yellow italic uppercase leading-none">RAPLIFE</h1>
@@ -349,14 +408,35 @@ const AppContent = () => {
 
           {/* RIGHT: ACTIONS & LCD STATUS */}
           <div className="flex items-center gap-2 md:gap-4 ml-auto">
-            {/* LCD STATUS DISPLAY WITH BUILT-IN SILENCIAR BUTTON */}
-            <div className="lcd-display px-2.5 py-1 md:px-4 md:py-2 rounded-lg border-2 md:border-4 border-black min-w-[150px] sm:min-w-[190px] md:min-w-[240px] flex items-center justify-between gap-2 text-left">
+            {/* LCD STATUS DISPLAY WITH BUILT-IN PLAY/PAUSE & SILENCIAR BUTTONS */}
+            <div className="lcd-display px-2.5 py-1 md:px-4 md:py-2 rounded-lg border-2 md:border-4 border-black min-w-[170px] sm:min-w-[210px] md:min-w-[290px] flex items-center justify-between gap-2.5 text-left">
               <div className="min-w-0 flex-grow">
                 <div className="text-[8px] md:text-[10px] opacity-75 font-mono uppercase font-black text-brand-green">FM 108.9 MHz</div>
                 <div className="text-[10px] md:text-xs font-mono truncate uppercase tracking-widest text-brand-yellow font-black mt-0.5">
-                  {currentTrack ? `PLAYING: ${currentTrack.title}` : 'STATUS: READY'}
+                  {currentTrack 
+                    ? `${isPlaying ? 'SONANDO' : 'PAUSADO'}: ${currentTrack.title}` 
+                    : 'STATUS: READY'
+                  }
                 </div>
               </div>
+              
+              {/* Play/Pause control inside LCD */}
+              <button 
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  togglePlay();
+                }}
+                className={`flex-shrink-0 flex items-center justify-center p-1 md:p-1.5 rounded-md transition-all cursor-pointer border active:scale-90 ${
+                  isPlaying 
+                    ? 'bg-brand-yellow text-black border-brand-yellow hover:bg-brand-yellow/80 shadow-[0_0_8px_rgba(248,251,2,0.3)]' 
+                    : 'bg-neutral-800 text-neutral-400 border-white/10 hover:bg-neutral-700 hover:text-white'
+                }`}
+                title={isPlaying ? "Pausar Emisión" : "Reproducir Emisión"}
+              >
+                {isPlaying ? <Pause size={11} className="fill-current" /> : <Play size={11} className="fill-current ml-[0.5px]" />}
+              </button>
+
               <button 
                 onClick={(e) => {
                   e.preventDefault();
@@ -370,7 +450,7 @@ const AppContent = () => {
                 }`}
                 title={isMuted ? "Quitar Silencio" : "Silenciar Radio"}
               >
-                {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                {isMuted ? <VolumeX size={11} /> : <Volume2 size={11} />}
               </button>
             </div>
 

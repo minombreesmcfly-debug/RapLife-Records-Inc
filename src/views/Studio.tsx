@@ -551,6 +551,136 @@ const StudioView = () => {
     }
   };
 
+  // 2D Canvas Offline visual filter fallback for safe-use under quota limits
+  const handleApplyOfflineStyleFallback = () => {
+    if (!selfie) return;
+    setLoading(true);
+    setLoadingStep('Generando Avatar RapLife VIP con Estilo Retro 2D (Modo Offline)...');
+    setErrorText(null);
+    setSuccessText(null);
+
+    const img = new Image();
+    img.src = selfie;
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 600;
+        canvas.height = 600;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          setLoading(false);
+          return;
+        }
+
+        const size = Math.min(img.width, img.height);
+        const sx = (img.width - size) / 2;
+        const sy = (img.height - size) / 2;
+
+        ctx.filter = 'contrast(1.25) brightness(1.05) saturate(1.1)';
+        ctx.drawImage(img, sx, sy, size, size, 0, 0, 600, 600);
+        ctx.filter = 'none';
+
+        const grad = ctx.createRadialGradient(300, 300, 120, 300, 300, 420);
+        grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 600, 600);
+
+        ctx.fillStyle = '#080808';
+        ctx.strokeStyle = '#F7FA05';
+        ctx.lineWidth = 4;
+
+        ctx.beginPath();
+        ctx.moveTo(180, 240);
+        ctx.lineTo(270, 240);
+        ctx.lineTo(260, 280);
+        ctx.lineTo(190, 280);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(330, 240);
+        ctx.lineTo(420, 240);
+        ctx.lineTo(410, 280);
+        ctx.lineTo(340, 280);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(270, 248);
+        ctx.lineTo(330, 248);
+        ctx.lineWidth = 6;
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(195, 248);
+        ctx.lineTo(210, 272);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(345, 248);
+        ctx.lineTo(360, 272);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#D4AF37';
+        ctx.lineWidth = 14;
+        ctx.beginPath();
+        ctx.arc(300, 480, 100, 0, Math.PI);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#F7FA05';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(300, 480, 100, 0, Math.PI);
+        ctx.stroke();
+
+        ctx.fillStyle = '#D4AF37';
+        ctx.strokeStyle = '#F7FA05';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(300, 510, 24, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#000000';
+        ctx.font = '900 italic 20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('RL', 300, 510);
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
+        ctx.fillRect(0, 0, 600, 55);
+
+        ctx.strokeStyle = '#F7FA05';
+        ctx.lineWidth = 6;
+        ctx.strokeRect(3, 3, 594, 594);
+
+        ctx.fillStyle = '#F7FA05';
+        ctx.font = '900 italic 16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('★★★ AVATAR RAPLIFE VIP RETRO ★★★', 300, 28);
+
+        const outputB64 = canvas.toDataURL('image/jpeg', 0.9);
+        setAvatarUrl(outputB64);
+        setIsOutfitModified(true);
+        setSuccessText('¡Look callejero retro aplicado offline! Ahora puedes pulsar el botón de guardar.');
+        setLoading(false);
+      } catch (canvasErr) {
+        console.error(canvasErr);
+        setLoading(false);
+        setErrorText('Excepción manipulando el canvas de imagen.');
+      }
+    };
+    img.onerror = () => {
+      setLoading(false);
+      setErrorText('Error al cargar la foto de selfie para el renderizado local.');
+    };
+  };
+
   // Run AI Outfit Try-On
   const handleApplyTryon = async () => {
     setErrorText(null);
@@ -1219,16 +1349,29 @@ const StudioView = () => {
                 {errorText}
               </p>
               {(errorText.includes('RESOURCE_EXHAUSTED') || errorText.includes('QUOTA_EXHAUSTED') || errorText.includes('429') || errorText.includes('quota') || errorText.includes('Quota')) && (
-                <div className="bg-black/50 border border-brand-yellow/30 p-4.5 rounded-xl space-y-2.5 text-[10px] text-gray-300">
+                <div className="bg-black/50 border border-brand-yellow/30 p-4.5 rounded-xl space-y-3.5 text-[10px] text-gray-300">
                   <p className="font-black text-brand-yellow flex items-center gap-1 uppercase tracking-wider">💡 AGOTAMIENTO DE CUOTA GRATUITA DETECTADO:</p>
                   <p className="font-semibold leading-relaxed text-gray-400">
                     El límite de solicitudes gratuitas de la API de imágenes de Gemini se ha completado temporalmente para la clave por defecto de RapLife Records.
                   </p>
+                  <div className="bg-brand-yellow/10 p-3 rounded-xl border border-brand-yellow/20 space-y-2">
+                    <p className="font-bold text-white uppercase tracking-tight text-[11px]">⚡ ¿QUIERES RENDERIZAR TU PORTADA AL INSTANTE?</p>
+                    <p className="text-gray-400 font-semibold leading-normal text-[9.5px]">
+                      Hemos habilitado un <strong className="text-brand-yellow">Filtro Hip-Hop Retro Offline</strong> que utiliza procesamiento local en tu navegador para colocarte gafas de sol "Thug Life" y una cadena de oro macizo de RapLife Records al instante sin consumir APIs de IA.
+                    </p>
+                    <button
+                      onClick={handleApplyOfflineStyleFallback}
+                      type="button"
+                      className="w-full py-2 px-3 bg-brand-yellow hover:bg-yellow-400 text-black font-black uppercase text-[10px] rounded-lg tracking-wider space-y-1 transition-all shadow-[0_4px_10px_rgba(247,250,5,0.2)] focus:outline-none focus:ring-2 focus:ring-brand-yellow cursor-pointer"
+                    >
+                      ★★★ APLICAR FILTRO RETRO LOCAL OFFLINE ★★★
+                    </button>
+                  </div>
                   <div className="pt-1.5 border-t border-white/5 space-y-2">
                     <p className="text-gray-300 font-bold">Opciones para continuar integrando inmediatamente:</p>
                     <ul className="list-disc pl-4 space-y-1 text-gray-400">
                       <li>
-                        <strong className="text-brand-yellow">AI Studio Plan de Pago</strong>: Activa la facturación pay-as-you-go en el menú del proyecto o en la configuración de la clave para remover este límite.
+                        <strong className="text-brand-yellow">AI Studio Plan de Pago</strong>: Activa la facturación pay-as-you-go en la barra superior o en la configuración de la clave para remover este límite. (Ya hemos iniciado la ventana emergente para facilitártelo).
                       </li>
                       <li>
                         <strong className="text-white">Usa tu propia clave</strong>: Ve a tu <strong className="text-emerald-400">Perfil de Usuario</strong> en la esquina superior e introduce tu propia Clave Gemini API con facturación habilitada.

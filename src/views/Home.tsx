@@ -61,6 +61,33 @@ const DEFAULT_FALLBACK_TRACKS = [
   }
 ];
 
+const DEFAULT_FALLBACK_ARTISTS = [
+  {
+    id: 'artist_mcfly_emece',
+    displayName: 'McFly Emece',
+    role: 'artist',
+    bio: 'Leyenda del rap under, flow filoso, productor de la vieja escuela con visión futurista.',
+    photoURL: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=400&auto=format&fit=crop',
+    isExclusive: true,
+  },
+  {
+    id: 'artist_ghetto_queen',
+    displayName: 'La Ghetto Queen',
+    role: 'artist',
+    bio: 'Barras crudas, ritmos pesados y lírica feminista que domina las calles del ghetto.',
+    photoURL: 'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?q=80&w=400&auto=format&fit=crop',
+    isExclusive: true,
+  },
+  {
+    id: 'artist_street_poet',
+    displayName: 'Street Poet',
+    role: 'artist',
+    bio: 'Poesía callejera pura, contundencia y rimas que retratan la realidad oculta de los callejones.',
+    photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=400&auto=format&fit=crop',
+    isExclusive: false,
+  }
+];
+
 const HomeView = () => {
   const { profile } = useAuth();
   const { play } = useMusic();
@@ -110,10 +137,10 @@ const HomeView = () => {
                    ));
           });
 
-          setPinnedArtists(filteredArtists);
+          setPinnedArtists(filteredArtists.length > 0 ? filteredArtists : DEFAULT_FALLBACK_ARTISTS);
         } catch (pinnedErr) {
           console.warn("[HOME] Failed to fetch exclusive artists (offline fallback):", pinnedErr);
-          setPinnedArtists([]);
+          setPinnedArtists(DEFAULT_FALLBACK_ARTISTS);
         }
 
         // Fetch Recent Tracks with robust index fallback
@@ -138,7 +165,7 @@ const HomeView = () => {
         setRecentTracks(tracksList.length > 0 ? tracksList : DEFAULT_FALLBACK_TRACKS);
       } catch (e) {
         console.error("Error fetching home data:", e);
-        setPinnedArtists([]);
+        setPinnedArtists(DEFAULT_FALLBACK_ARTISTS);
         setRecentTracks(DEFAULT_FALLBACK_TRACKS);
       }
     };

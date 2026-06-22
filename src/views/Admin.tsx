@@ -121,6 +121,12 @@ const AdminView = () => {
   const [editingTrackIndex, setEditingTrackIndex] = useState<number | null>(null);
   const [editingTrackName, setEditingTrackName] = useState<string>('');
 
+  // Dual radio support
+  const [radioUploadMethod, setRadioUploadMethod] = useState<'file' | 'url'>('file');
+  const [directRadioUrl, setDirectRadioUrl] = useState('');
+  const [directRadioTitle, setDirectRadioTitle] = useState('');
+  const [directRadioArtist, setDirectRadioArtist] = useState('');
+
   const fetchLocalRadioTracks = async () => {
     try {
       const res = await fetch('/api/radio-local-songs');
@@ -439,32 +445,68 @@ const AdminView = () => {
   };
 
   const handleUploadLocalRadio = async () => {
-    if (!localRadioFile) {
-      alert('Por favor selecciona un archivo de audio (.mp3, .wav, .m4a)');
-      return;
-    }
-    setUploadingLocalRadio(true);
-    try {
-      const formData = new FormData();
-      formData.append('track', localRadioFile);
-
-      const res = await fetch('/api/upload-radio-local', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Error al subir archivo a la radio local');
+    if (radioUploadMethod === 'file') {
+      if (!localRadioFile) {
+        alert('Por favor selecciona un archivo de audio (.mp3, .wav, .m4a)');
+        return;
       }
+      setUploadingLocalRadio(true);
+      try {
+        const formData = new FormData();
+        formData.append('track', localRadioFile);
 
-      alert('¡Archivo de radio local agregado correctamente!');
-      setLocalRadioFile(null);
-      await fetchLocalRadioTracks();
-    } catch (err: any) {
-      alert('Error al subir: ' + err.message);
-    } finally {
-      setUploadingLocalRadio(false);
+        const res = await fetch('/api/upload-radio-local', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Error al subir archivo a la radio local');
+        }
+
+        alert('¡Archivo de radio local agregado correctamente!');
+        setLocalRadioFile(null);
+        await fetchLocalRadioTracks();
+      } catch (err: any) {
+        alert('Error al subir: ' + err.message);
+      } finally {
+        setUploadingLocalRadio(false);
+      }
+    } else {
+      // URL Upload Method
+      if (!directRadioUrl) {
+        alert('Por favor introduce la URL directa del archivo de audio (.mp3).');
+        return;
+      }
+      if (!directRadioTitle) {
+        alert('Por favor introduce el Título del track.');
+        return;
+      }
+      setUploadingLocalRadio(true);
+      try {
+        await addDoc(collection(db, 'tracks'), {
+          artistId: 'ADMIN',
+          artistName: directRadioArtist.trim() || 'RAPLIFE RECORDS',
+          title: directRadioTitle.trim(),
+          audioUrl: directRadioUrl.trim(),
+          coverUrl: '/assets/player_idle.png',
+          isRadioInterstitial: false,
+          approved: true,
+          status: 'approved',
+          createdAt: serverTimestamp()
+        });
+
+        alert('¡Track registrado persistentemente en la Radio con éxito!');
+        setDirectRadioUrl('');
+        setDirectRadioTitle('');
+        setDirectRadioArtist('');
+        await fetchLocalRadioTracks();
+      } catch (err: any) {
+        alert('Error al registrar track en base de datos: ' + err.message);
+      } finally {
+        setUploadingLocalRadio(false);
+      }
     }
   };
 
@@ -813,59 +855,126 @@ const AdminView = () => {
 
             {/* Drop and Pick Upload Area */}
             <div className="space-y-4">
-              <div className="p-4 bg-black/45 border border-white/5 rounded-2xl space-y-3">
-                <input 
-                  type="file" 
-                  ref={localRadioFileInputRef}
-                  accept="audio/*" 
-                  className="hidden"
-                  onChange={e => setLocalRadioFile(e.target.files?.[0] || null)}
-                />
-                
-                <div 
-                  onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
-                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
-                  onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDragActive(false);
-                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                      setLocalRadioFile(e.dataTransfer.files[0]);
-                    }
-                  }}
-                  onClick={() => localRadioFileInputRef.current?.click()}
-                  className={`w-full border-2 border-dashed p-6 rounded-xl flex flex-col items-center justify-center transition-all bg-white/[0.01] cursor-pointer ${
-                    dragActive 
-                      ? 'border-brand-yellow bg-brand-yellow/10 scale-[1.01]' 
-                      : 'border-white/10 hover:border-brand-yellow/40'
-                  }`}
-                >
-                  <Upload size={24} className={`mb-2 transition-transform ${dragActive ? 'text-brand-yellow scale-110' : 'text-gray-650'}`} />
-                  <p className="text-xs font-black uppercase text-gray-400 text-center truncate max-w-full">
-                    {localRadioFile ? localRadioFile.name : 'ARRASTRA O SELECCIONA AUDIO'}
-                  </p>
-                  <p className="text-[9px] text-gray-500 font-bold mt-1 uppercase tracking-widest">WAV, MP3, M4A, OGG</p>
+              <div className="p-4 bg-black/45 border border-white/5 rounded-2xl space-y-4">
+                {/* Selector */}
+                <div className="bg-black/40 p-1 rounded-xl flex gap-1 border border-white/5 text-[9px]">
+                  <button
+                    type="button"
+                    onClick={() => setRadioUploadMethod('file')}
+                    className={`flex-1 py-2 rounded-lg font-black uppercase transition-all tracking-wider ${radioUploadMethod === 'file' ? 'bg-brand-yellow text-black' : 'text-gray-400 hover:text-white bg-white/[0.01]'}`}
+                  >
+                    SUBIR ARCHIVO LOCAL (.MP3)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRadioUploadMethod('url')}
+                    className={`flex-1 py-2 rounded-lg font-black uppercase transition-all tracking-wider ${radioUploadMethod === 'url' ? 'bg-brand-yellow text-black' : 'text-gray-400 hover:text-white bg-white/[0.01]'}`}
+                  >
+                    INYECTAR URL DIRECTA (PERSISTENTE)
+                  </button>
                 </div>
 
-                {localRadioFile && (
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => setLocalRadioFile(null)}
-                      className="px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500/20 active:scale-95 text-xs font-black uppercase rounded-xl transition-all cursor-pointer"
+                {radioUploadMethod === 'file' ? (
+                  <>
+                    <input 
+                      type="file" 
+                      ref={localRadioFileInputRef}
+                      accept="audio/*" 
+                      className="hidden"
+                      onChange={e => setLocalRadioFile(e.target.files?.[0] || null)}
+                    />
+                    
+                    <div 
+                      onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDragActive(false);
+                        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                          setLocalRadioFile(e.dataTransfer.files[0]);
+                        }
+                      }}
+                      onClick={() => localRadioFileInputRef.current?.click()}
+                      className={`w-full border-2 border-dashed p-6 rounded-xl flex flex-col items-center justify-center transition-all bg-white/[0.01] cursor-pointer ${
+                        dragActive 
+                          ? 'border-brand-yellow bg-brand-yellow/10 scale-[1.01]' 
+                          : 'border-white/10 hover:border-brand-yellow/40'
+                      }`}
                     >
-                      <X size={14} />
-                    </button>
+                      <Upload size={24} className={`mb-2 transition-transform ${dragActive ? 'text-brand-yellow scale-110' : 'text-gray-650'}`} />
+                      <p className="text-xs font-black uppercase text-gray-400 text-center truncate max-w-full">
+                        {localRadioFile ? localRadioFile.name : 'ARRASTRA O SELECCIONA AUDIO'}
+                      </p>
+                      <p className="text-[9px] text-gray-500 font-bold mt-1 uppercase tracking-widest">WAV, MP3, M4A, OGG</p>
+                    </div>
+
+                    {localRadioFile && (
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => setLocalRadioFile(null)}
+                          className="px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500/20 active:scale-95 text-xs font-black uppercase rounded-xl transition-all cursor-pointer"
+                        >
+                          <X size={14} />
+                        </button>
+                        <button 
+                          onClick={handleUploadLocalRadio}
+                          disabled={uploadingLocalRadio}
+                          className="flex-1 py-3 bg-brand-yellow text-black font-black uppercase text-xs rounded-xl shadow-glow hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-30 disabled:grayscale cursor-pointer"
+                        >
+                          {uploadingLocalRadio ? 'CARGANDO AUDIO...' : 'SUBIR E INYECTAR DIRECTO'}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black text-gray-500 uppercase tracking-widest block ml-1">URL DE AUDIO (.MP3 EXT.)</label>
+                      <input 
+                        type="url" 
+                        placeholder="HTTPS://MISERVIDOR.COM/CANCION.MP3"
+                        className="w-full bg-black/60 border border-white/5 p-3 rounded-xl focus:border-brand-yellow outline-none text-xs text-white"
+                        value={directRadioUrl}
+                        onChange={e => setDirectRadioUrl(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-gray-500 uppercase tracking-widest block ml-1">TÍTULO DEL TRACK</label>
+                        <input 
+                          type="text" 
+                          placeholder="EJ: REAL RAP LIVE"
+                          className="w-full bg-black/60 border border-white/5 p-3 rounded-xl focus:border-brand-yellow outline-none text-xs text-white"
+                          value={directRadioTitle}
+                          onChange={e => setDirectRadioTitle(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-gray-550 uppercase tracking-widest block ml-1">ARTISTA (OPCIONAL)</label>
+                        <input 
+                          type="text" 
+                          placeholder="EJ: MC FLY"
+                          className="w-full bg-black/60 border border-white/5 p-3 rounded-xl focus:border-brand-yellow outline-none text-xs text-white"
+                          value={directRadioArtist}
+                          onChange={e => setDirectRadioArtist(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
                     <button 
                       onClick={handleUploadLocalRadio}
-                      disabled={uploadingLocalRadio}
-                      className="flex-1 py-3 bg-brand-yellow text-black font-black uppercase text-xs rounded-xl shadow-glow hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-30 disabled:grayscale cursor-pointer"
+                      disabled={uploadingLocalRadio || !directRadioUrl || !directRadioTitle}
+                      className="w-full py-3 bg-brand-yellow text-black font-black uppercase text-xs rounded-xl shadow-glow hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-30 disabled:grayscale cursor-pointer"
                     >
-                      {uploadingLocalRadio ? 'CARGANDO AUDIO...' : 'SUBIR E INYECTAR DIRECTO'}
+                      {uploadingLocalRadio ? 'REGISTRANDO EN BASE DE DATOS...' : 'INYECTAR DIRECTO A LA RADIO'}
                     </button>
                   </div>
                 )}
               </div>
+            </div>
 
               {/* Sequential Playlist */}
               <div className="space-y-2">
@@ -1011,7 +1120,6 @@ const AdminView = () => {
               )}
             </div>
           </div>
-        </div>
 
         {/* Right Column: Artist Management */}
         <div className="bg-brand-dark p-8 rounded-[2rem] border-4 border-boombox-gray space-y-6 flex flex-col">

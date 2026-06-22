@@ -5,6 +5,33 @@ import { db } from '../lib/firebase';
 import { Search, User, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+const DEFAULT_FALLBACK_ARTISTS = [
+  {
+    id: 'artist_mcfly_emece',
+    displayName: 'McFly Emece',
+    role: 'artist',
+    bio: 'Leyenda del rap under, flow filoso, productor de la vieja escuela con visión futurista.',
+    photoURL: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
+    isExclusive: true,
+  },
+  {
+    id: 'artist_ghetto_queen',
+    displayName: 'La Ghetto Queen',
+    role: 'artist',
+    bio: 'Barras crudas, ritmos pesados y lírica feminista que domina las calles del ghetto.',
+    photoURL: 'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=400',
+    isExclusive: true,
+  },
+  {
+    id: 'artist_street_poet',
+    displayName: 'Street Poet',
+    role: 'artist',
+    bio: 'Poesía callejera pura, contundencia y rimas que retratan la realidad oculta de los callejones.',
+    photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
+    isExclusive: false,
+  }
+];
+
 const ArtistsView = () => {
   const [artists, setArtists] = useState<any[]>([]);
   const [search, setSearch] = useState('');
@@ -32,10 +59,10 @@ const ArtistsView = () => {
                  ));
         });
 
-        setArtists(filteredArtists);
+        setArtists(filteredArtists.length > 0 ? filteredArtists : DEFAULT_FALLBACK_ARTISTS);
       } catch (err) {
         console.warn("[ARTISTS] Failed to fetch artists roster offline:", err);
-        setArtists([]);
+        setArtists(DEFAULT_FALLBACK_ARTISTS);
       } finally {
         setLoading(false);
       }

@@ -12,6 +12,11 @@ const UploadTrackView = () => {
   const [title, setTitle] = useState('');
   const [artistName, setArtistName] = useState('');
   const [uploading, setUploading] = useState(false);
+  
+  // Dual-upload mode support: 'file' vs 'url'
+  const [uploadMethod, setUploadMethod] = useState<'file' | 'url'>('file');
+  const [directAudioUrl, setDirectAudioUrl] = useState('');
+  const [directCoverUrl, setDirectCoverUrl] = useState('');
 
   React.useEffect(() => {
     if (user && !artistName) setArtistName(user.displayName || '');
@@ -35,8 +40,18 @@ const UploadTrackView = () => {
   }, [user]);
 
   const handleUpload = async () => {
-    if (!user || !trackFile || !title) {
-       alert("Faltan campos obligatorios (Archivo y Título)");
+    if (!user || !title) {
+       alert("Falta rellenar el Título.");
+       return;
+    }
+    
+    if (uploadMethod === 'file' && !trackFile) {
+       alert("Falta seleccionar el archivo de audio (.mp3).");
+       return;
+    }
+
+    if (uploadMethod === 'url' && !directAudioUrl) {
+       alert("Falta agregar la URL directa del audio (.mp3).");
        return;
     }
     
@@ -48,61 +63,71 @@ const UploadTrackView = () => {
 
     setUploading(true);
     setProgress(10);
-    console.log("Upload started via Server Proxy for track:", trackFile.name);
     
     try {
-      const formData = new FormData();
-      formData.append('track', trackFile);
-      if (coverFile) formData.append('cover', coverFile);
-      formData.append('userId', user.uid);
-      formData.append('title', title);
-      formData.append('artistName', artistName);
+      let finalAudioUrl = '';
+      let finalCoverUrl = '';
 
-      // We'll simulate progress because fetch doesn't easily support upload progress without XHR
-      const interval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) return 90;
-          return prev + 5;
+      if (uploadMethod === 'file') {
+        console.log("Upload started via Server Proxy for track:", trackFile!.name);
+        const formData = new FormData();
+        formData.append('track', trackFile!);
+        if (coverFile) formData.append('cover', coverFile);
+        formData.append('userId', user.uid);
+        formData.append('title', title);
+        formData.append('artistName', artistName);
+
+        const interval = setInterval(() => {
+          setProgress(prev => {
+            if (prev >= 90) return 90;
+            return prev + 5;
+          });
+        }, 1000);
+
+        const response = await fetch('/api/upload-track', {
+          method: 'POST',
+          body: formData,
         });
-      }, 1000);
 
-      const response = await fetch('/api/upload-track', {
-        method: 'POST',
-        body: formData,
-      });
+        clearInterval(interval);
 
-      clearInterval(interval);
-
-      if (!response.ok) {
-        let errorMessage = 'Error desconocido en el servidor';
-        try {
-          const errorText = await response.text();
+        if (!response.ok) {
+          let errorMessage = 'Error desconocido en el servidor';
           try {
-            const errorData = JSON.parse(errorText);
-            errorMessage = errorData.error || errorMessage;
-            console.error("[UPLOAD] Server error details:", errorData);
-          } catch (e) {
-            errorMessage = errorText || errorMessage;
-            console.error("[UPLOAD] Raw server error text:", errorText);
+            const errorText = await response.text();
+            try {
+              const errorData = JSON.parse(errorText);
+              errorMessage = errorData.error || errorMessage;
+              console.error("[UPLOAD] Server error details:", errorData);
+            } catch (e) {
+              errorMessage = errorText || errorMessage;
+              console.error("[UPLOAD] Raw server error text:", errorText);
+            }
+          } catch (parseError) {
+            console.error("[UPLOAD] Failed to read error response body");
           }
-        } catch (parseError) {
-          console.error("[UPLOAD] Failed to read error response body");
+          throw new Error(errorMessage);
         }
-        throw new Error(errorMessage);
+
+        console.log("[UPLOAD] Server response received successfully");
+        const { audioUrl, coverUrl } = await response.json();
+        finalAudioUrl = audioUrl;
+        finalCoverUrl = coverUrl;
+      } else {
+        // Direct URL integration
+        finalAudioUrl = directAudioUrl.trim();
+        finalCoverUrl = directCoverUrl.trim() || '/assets/player_idle.png';
+        setProgress(70);
       }
 
-      console.log("[UPLOAD] Server response received successfully");
-      const { audioUrl, coverUrl } = await response.json();
-      setProgress(95);
-
-      // 2. Save to Firestore (Client-side is fine for this)
+      setProgress(90);
       console.log("[UPLOAD] Saving track record to Firestore...");
       const trackData = {
         artistId: user.uid,
         artistName: artistName || user.displayName || 'Artista Desconocido',
         title,
-        audioUrl,
-        coverUrl,
+        audioUrl: finalAudioUrl,
+        coverUrl: finalCoverUrl || '/assets/player_idle.png',
         isRadioInterstitial: false,
         createdAt: serverTimestamp(),
         playCount: 0,
@@ -115,12 +140,6 @@ const UploadTrackView = () => {
 
       setProgress(100);
       setSuccess(true);
-
-      // Stay on success screen longer or don't reset automatically
-      setTimeout(() => {
-        // Only reset if they haven't started another upload? 
-        // For now just keep it simple but longer duration
-      }, 10000);
 
     } catch (e: any) {
       console.error("[UPLOAD] FULL ERROR CATCH:", e);
@@ -136,6 +155,8 @@ const UploadTrackView = () => {
     setTitle('');
     setTrackFile(null);
     setCoverFile(null);
+    setDirectAudioUrl('');
+    setDirectCoverUrl('');
     setProgress(0);
   };
 
@@ -228,45 +249,97 @@ const UploadTrackView = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-               {/* Audio Upload */}
-               <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1 text-center block">ARCHIVO DE AUDIO (.MP3)</label>
-                  <div className="relative group min-h-[200px]">
-                     <input 
-                       type="file" accept="audio/*" 
-                       className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                       onChange={e => setTrackFile(e.target.files?.[0] || null)}
-                     />
-                     <div className={`w-full h-full border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-6 transition-all ${trackFile ? 'border-brand-yellow bg-brand-yellow/5' : 'border-white/10 bg-white/[0.02] hover:border-white/30'}`}>
-                        <Music size={40} className={`mb-4 ${trackFile ? 'text-brand-yellow' : 'text-gray-600'}`} />
-                        <p className="text-[10px] font-black uppercase tracking-tighter text-center line-clamp-1">{trackFile ? trackFile.name : 'ARRASTRA O SELECCIONA AUDIO'}</p>
-                     </div>
-                  </div>
-               </div>
-
-               {/* Cover Upload */}
-               <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1 text-center block">ARTE / PORTADA (OBLIGATORIO)</label>
-                  <div className="relative group min-h-[200px]">
-                     <input 
-                       type="file" accept="image/*" 
-                       className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                       onChange={e => setCoverFile(e.target.files?.[0] || null)}
-                     />
-                     <div className={`w-full h-full border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-6 transition-all ${coverFile ? 'border-brand-yellow bg-brand-yellow/5' : 'border-white/10 bg-white/[0.02] hover:border-white/30'}`}>
-                        {coverFile ? (
-                           <img src={URL.createObjectURL(coverFile)} className="w-full h-full object-cover rounded-xl" />
-                        ) : (
-                          <>
-                            <ImageIcon size={40} className="text-gray-600 mb-4" />
-                            <p className="text-[10px] font-black uppercase tracking-tighter text-center">SUBIR IMAGEN</p>
-                          </>
-                        )}
-                     </div>
-                  </div>
-               </div>
+            {/* Selector de Método de Sintonía / Carga */}
+            <div className="bg-black/60 border border-white/10 p-2 rounded-2xl flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => setUploadMethod('file')}
+                className={`flex-1 py-4 px-4 rounded-xl font-black italic text-sm tracking-widest uppercase transition-all duration-300 ${uploadMethod === 'file' ? 'bg-brand-yellow text-black font-black' : 'text-gray-400 hover:text-white bg-white/[0.02]'}`}
+              >
+                SUBIR ARCHIVOS (.MP3 + FOTO)
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadMethod('url')}
+                className={`flex-1 py-4 px-4 rounded-xl font-black italic text-sm tracking-widest uppercase transition-all duration-300 ${uploadMethod === 'url' ? 'bg-brand-yellow text-black font-black' : 'text-gray-400 hover:text-white bg-white/[0.02]'}`}
+              >
+                USAR URL DIRECTA (PERMANENTE Y ESTABLE)
+              </button>
             </div>
+
+            {uploadMethod === 'file' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                 {/* Audio Upload */}
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1 text-center block">ARCHIVO DE AUDIO (.MP3)</label>
+                    <div className="relative group min-h-[200px]">
+                       <input 
+                         type="file" accept="audio/*" 
+                         className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                         onChange={e => setTrackFile(e.target.files?.[0] || null)}
+                       />
+                       <div className={`w-full h-full border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-6 transition-all ${trackFile ? 'border-brand-yellow bg-brand-yellow/5' : 'border-white/10 bg-white/[0.02] hover:border-white/30'}`}>
+                          <Music size={40} className={`mb-4 ${trackFile ? 'text-brand-yellow' : 'text-gray-600'}`} />
+                          <p className="text-[10px] font-black uppercase tracking-tighter text-center line-clamp-1">{trackFile ? trackFile.name : 'ARRASTRA O SELECCIONA AUDIO'}</p>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* Cover Upload */}
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1 text-center block">ARTE / PORTADA (OBLIGATORIO)</label>
+                    <div className="relative group min-h-[200px]">
+                       <input 
+                         type="file" accept="image/*" 
+                         className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                         onChange={e => setCoverFile(e.target.files?.[0] || null)}
+                       />
+                       <div className={`w-full h-full border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-6 transition-all ${coverFile ? 'border-brand-yellow bg-brand-yellow/5' : 'border-white/10 bg-white/[0.02] hover:border-white/30'}`}>
+                          {coverFile ? (
+                             <img src={URL.createObjectURL(coverFile)} className="w-full h-full object-cover rounded-xl" />
+                          ) : (
+                            <>
+                              <ImageIcon size={40} className="text-gray-600 mb-4" />
+                              <p className="text-[10px] font-black uppercase tracking-tighter text-center">SUBIR IMAGEN</p>
+                            </>
+                          )}
+                       </div>
+                    </div>
+                 </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                 {/* Direct Audio URL */}
+                 <div className="space-y-2">
+                   <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">URL DIRECTA DE AUDIO (.MP3)</label>
+                   <input 
+                     type="url" 
+                     placeholder="EJ: HTTPS://MISERVIDOR.COM/CANCION.MP3"
+                     className="w-full bg-black/50 border border-white/10 p-5 rounded-2xl focus:border-brand-yellow outline-none transition-all font-black uppercase text-lg"
+                     value={directAudioUrl}
+                     onChange={e => setDirectAudioUrl(e.target.value)}
+                   />
+                   <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest block ml-1 leading-relaxed">
+                     UTILIZA CUALQUIER SERVIDOR ESTABLE O DIRECCIÓN PÚBLICA DIRECTA (POR EJEMPLO, UN LINK DIRECTO DE DROPBOX CON FINAL EN ?DL=1).
+                   </span>
+                 </div>
+
+                 {/* Direct Cover URL */}
+                 <div className="space-y-2">
+                   <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">URL PORTADA / IMAGEN (OPCIONAL)</label>
+                   <input 
+                     type="url" 
+                     placeholder="EJ: HTTPS://MISERVIDOR.COM/PORTADA.JPG"
+                     className="w-full bg-black/50 border border-white/10 p-5 rounded-2xl focus:border-brand-yellow outline-none transition-all font-black uppercase text-lg"
+                     value={directCoverUrl}
+                     onChange={e => setDirectCoverUrl(e.target.value)}
+                   />
+                   <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest block ml-1 leading-relaxed">
+                     DEJA EN BLANCO PARA USAR UNA PORTADA POR DEFECTO ESTÉTICA.
+                   </span>
+                 </div>
+              </div>
+            )}
 
             <div className="p-4 bg-brand-yellow/5 rounded-2xl border border-brand-yellow/20 flex gap-4 items-center">
                <AlertCircle className="text-brand-yellow flex-shrink-0" size={20} />
@@ -275,21 +348,27 @@ const UploadTrackView = () => {
                </p>
             </div>
 
-            {(!trackFile || !coverFile || !title) && !uploading && (
+            {((uploadMethod === 'file' && (!trackFile || !coverFile)) || 
+              (uploadMethod === 'url' && !directAudioUrl) || !title) && !uploading && (
               <p className="text-[10px] font-black text-brand-yellow/60 uppercase text-center animate-pulse">
-                DEBES SELECCIONAR MP3, PORTADA Y PONER UN TÍTULO
+                {uploadMethod === 'file' ? 'DEBES SELECCIONAR MP3, PORTADA Y PONER UN TÍTULO' : 'DEBES INGRESAR LA URL DIRECTA DEL MP3 Y UN TÍTULO'}
               </p>
             )}
 
             {uploading && (
               <p className="text-[10px] font-black text-brand-yellow/60 uppercase text-center animate-pulse">
-                POR FAVOR, NO CIERRES ESTA VENTANA HASTA QUE TERMINE LA SUBIDA
+                POR FAVOR, NO CIERRES ESTA VENTANA HASTA QUE TERMINE EL REGISTRO
               </p>
             )}
 
             <button 
               onClick={handleUpload}
-              disabled={uploading || !trackFile || !coverFile || !title}
+              disabled={
+                uploading || 
+                !title || 
+                (uploadMethod === 'file' && (!trackFile || !coverFile)) || 
+                (uploadMethod === 'url' && !directAudioUrl)
+              }
               className="w-full py-6 bg-brand-yellow text-black font-black italic uppercase text-2xl rounded-2xl shadow-glow active:scale-95 transition-all disabled:opacity-20 flex items-center justify-center gap-4 group relative overflow-hidden"
             >
               {uploading && (

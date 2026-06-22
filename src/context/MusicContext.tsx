@@ -408,6 +408,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const play = (track: Track) => {
     if (audioRef.current) {
+      // Restore volume to 100% on fresh play action if it was faded to 0 (to stay self-healing and audible)
+      if (audioRef.current.volume === 0 || volume === 0) {
+        audioRef.current.volume = 1.0;
+        setVolumeState(1.0);
+      }
+
       audioRef.current.src = track.audioUrl;
       const promise = audioRef.current.play();
       if (promise !== undefined) {
@@ -447,6 +453,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             audioRef.current.src = currentTrack.audioUrl;
           }
         }
+
+        // Restore volume to 100% on play action if it was faded to 0
+        if (audioRef.current.volume === 0 || volume === 0) {
+          audioRef.current.volume = 1.0;
+          setVolumeState(1.0);
+        }
+
         const promise = audioRef.current.play();
         if (promise !== undefined) {
           playPromiseRef.current = promise;
