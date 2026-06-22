@@ -239,47 +239,6 @@ const LandingPage = () => {
 
   return (
     <div className="max-w-6xl mx-auto px-2 md:px-0 pt-4 md:pt-6 space-y-20 md:space-y-32">
-      {/* GUEST HERO BANNER & LOGO */}
-      {!user && (
-        <div className="relative w-full rounded-2xl md:rounded-[3.5rem] overflow-hidden border-2 md:border-4 border-boombox-gray bg-black/90 p-8 md:p-14 transition-all flex flex-col items-center justify-center text-center gap-6 min-h-[350px] md:min-h-[460px] shadow-2xl">
-          {/* Banner as background layer */}
-          <div className="absolute inset-0 z-0">
-            <img 
-              referrerPolicy="no-referrer"
-              src="/assets/Banner.png" 
-              alt="RapLife Background Banner" 
-              className="w-full h-full object-cover opacity-15 filter saturate-75 contrast-125 scale-105"
-            />
-            {/* Dark vignette overlay */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/30 to-black" />
-          </div>
-
-          {/* Logo as main brand identity */}
-          <div className="relative z-10 flex flex-col items-center gap-6 max-w-3xl animate-fade-in">
-            <img 
-              referrerPolicy="no-referrer"
-              src="/assets/Logo.png" 
-              alt="RapLife Records Logo" 
-              className="w-44 md:w-64 object-contain filter drop-shadow-[0_8px_20px_rgba(247,250,5,0.25)]"
-            />
-            <div className="space-y-3">
-              <h1 className="text-3xl md:text-5xl font-black italic uppercase tracking-tighter text-brand-yellow">
-                BIENVENIDO A RAPLIFE RECORDS
-              </h1>
-              <p className="text-[10px] md:text-xs font-black uppercase text-gray-400 tracking-widest leading-relaxed max-w-2xl mx-auto">
-                LA CORONA DEL RAP UNDERGROUND. REGÍSTRATE O INICIA SESIÓN EN LA PARTE SUPERIOR PARA ACUMULAR PUNTOS, PARTICIPAR EN EL CHAT COLECTIVO, Y REGISTRAR TU PROPIO ÁLBUM O CANCIÓN EN NUESTROS SISTEMAS.
-              </p>
-            </div>
-          </div>
-
-          {/* Retro corner screws */}
-          <div className="absolute top-4 left-4 w-2 h-2 rounded-full bg-boombox-gray/30 border border-black/40" />
-          <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-boombox-gray/30 border border-black/40" />
-          <div className="absolute bottom-4 left-4 w-2 h-2 rounded-full bg-boombox-gray/30 border border-black/40" />
-          <div className="absolute bottom-4 right-4 w-2 h-2 rounded-full bg-boombox-gray/30 border border-black/40" />
-        </div>
-      )}
-
       {/* PORTADA PRINCIPAL DE ARTISTAS DESTACADOS */}
       <div className="bg-black/45 md:bg-black/40 border-2 md:border-4 border-boombox-gray rounded-2xl md:rounded-[3rem] overflow-hidden shadow-2xl relative boombox-texture">
         <SponsoredCarousel />
