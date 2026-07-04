@@ -468,25 +468,17 @@ const AppContent = () => {
 
       {/* SEARCH/ROUTED CONTENT */}
       <main className="pt-28 md:pt-40">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center min-h-[55vh] text-center animate-pulse">
-            <Radio className="text-brand-yellow mb-4 animate-spin" size={48} style={{ animationDuration: '3.3s' }} />
-            <h2 className="text-xl font-black italic uppercase tracking-widest text-brand-yellow">CONECTANDO CON SERVIDORES RAPLIFE...</h2>
-            <p className="text-[10px] text-gray-500 font-mono mt-1 uppercase tracking-widest">Verificando señal de satélite y credenciales de acceso</p>
-          </div>
-        ) : (
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/admin" element={isAdmin ? <AdminView /> : <Navigate to="/" />} />
-            <Route path="/artists" element={<ArtistsView />} />
-            <Route path="/profile/:id" element={<ArtistProfileView />} />
-            <Route path="/profile-setup" element={user ? <ProfileSetupView /> : <Navigate to="/" />} />
-            <Route path="/settings" element={user ? <ProfileSettingsView /> : <Navigate to="/" />} />
-            <Route path="/studio" element={<StudioView />} />
-            <Route path="/upload" element={user && (profile?.role === 'artist' || isAdmin) ? <UploadTrackView /> : <Navigate to="/" />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        )}
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/admin" element={loading ? <div className="text-center py-20 text-brand-yellow font-black animate-pulse">VERIFICANDO CREDENCIALES...</div> : (isAdmin ? <AdminView /> : <Navigate to="/" />)} />
+          <Route path="/artists" element={<ArtistsView />} />
+          <Route path="/profile/:id" element={<ArtistProfileView />} />
+          <Route path="/profile-setup" element={loading ? <div className="text-center py-20 text-brand-yellow font-black animate-pulse">CARGANDO PERFIL...</div> : (user ? <ProfileSetupView /> : <Navigate to="/" />)} />
+          <Route path="/settings" element={loading ? <div className="text-center py-20 text-brand-yellow font-black animate-pulse">CARGANDO AJUSTES...</div> : (user ? <ProfileSettingsView /> : <Navigate to="/" />)} />
+          <Route path="/studio" element={<StudioView />} />
+          <Route path="/upload" element={loading ? <div className="text-center py-20 text-brand-yellow font-black animate-pulse">VERIFICANDO PERMISOS...</div> : (user && (profile?.role === 'artist' || isAdmin) ? <UploadTrackView /> : <Navigate to="/" />)} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
       </main>
 
       <MobileNav />

@@ -86,6 +86,19 @@ export const VOCAL_PRESETS: VocalPreset[] = [
     highEQ: -2
   },
   {
+    id: 'talkbox-westcoast',
+    name: 'Talkbox (West Coast)',
+    description: 'Efecto Talkbox clásico de la costa oeste (estilo Zapp & Roger). Sonido nasal con fuerte distorsión armónica, filtro de formantes acentuado y afinación digital perfecta.',
+    autoTuneActive: true,
+    retuneSpeed: 0,
+    delayWet: 15,
+    reverbWet: 15,
+    distortionAmount: 75,
+    lowEQ: -4,
+    midEQ: 9,
+    highEQ: 3
+  },
+  {
     id: 'boom-bap-punch',
     name: 'Boom Bap Punch (Voz Pura)',
     description: 'Sonido crudo analógico "No Autotune". Boost masivo de medios y graves saturados tipo cinta para rimas underground.',
@@ -1652,44 +1665,11 @@ export default function SpotifyTurntable() {
                 >
                   <div className="absolute inset-0 bg-brand-yellow/[0.02] pointer-events-none" />
 
-                  {/* Absolute Explanatory Handwritten Tags pointing in direction of original components */}
-                  <div className="w-full max-w-xl relative h-full flex flex-col justify-between py-2 text-brand-yellow font-handwritten">
+                  {/* Absolute Explanatory Centered Box with large GO buttons */}
+                  <div className="w-full max-w-xl relative h-full flex items-center justify-center py-2 text-brand-yellow">
                     
-                    {/* Annotation Top Right pointing to LCD */}
-                    <div className="absolute top-[8%] right-[2%] text-right max-w-[190px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
-                      <p className="text-sm md:text-base leading-tight font-bold">
-                        🎼 EL TONO CORRECTO
-                      </p>
-                      <p className="text-xs md:text-sm text-gray-300 leading-snug mt-0.5">
-                        Elige la escala de tu base instrumental para que cada verso rime en perfecta armonía.
-                      </p>
-                      <div className="text-brand-yellow text-xs mt-1 font-sans font-black flex items-center justify-end">
-                        <span>Apunta aquí</span> <ArrowDownRight size={10} className="inline ml-1" />
-                      </div>
-                    </div>
-
-                    {/* Annotation Mid Left pointing to AutoTune speed */}
-                    <div className="absolute top-[35%] left-[1%] text-left max-w-[195px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
-                      <p className="text-sm md:text-base leading-tight font-bold">
-                        🤖 EFECTO T-PAIN PRO
-                      </p>
-                      <p className="text-xs md:text-sm text-gray-300 leading-snug mt-0.5">
-                        Lleva la velocidad a 0ms para un flow robótico extremo o 80ms para un retoque sutil callejero.
-                      </p>
-                    </div>
-
-                    {/* Annotation Mid Right pointing to FX controllers */}
-                    <div className="absolute top-[38%] right-[1%] text-right max-w-[180px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
-                      <p className="text-sm md:text-base leading-tight font-bold">
-                        🎚️ MIX ANALÓGICO
-                      </p>
-                      <p className="text-xs md:text-sm text-gray-300 leading-snug mt-0.5">
-                        Satura tu voz con distorsiones, añade eco metálico y reverbs espaciales para grabaciones gordas.
-                      </p>
-                    </div>
-
                     {/* Main Centered Box with large GO buttons */}
-                    <div className="m-auto text-center space-y-6 pt-16 z-20">
+                    <div className="text-center space-y-6 z-20">
                       <div className="space-y-1 bg-black/60 p-5 rounded-2xl border-2 border-brand-yellow/40 shadow-glow">
                         <span className="px-3.5 py-1 bg-brand-yellow/10 border border-brand-yellow/30 text-brand-yellow text-[9.5px] font-sans font-black uppercase tracking-widest rounded-full inline-block mb-1.5">
                           CONSOLA ESTUDIO VOCAL RAPLIFE
@@ -1708,16 +1688,6 @@ export default function SpotifyTurntable() {
                       >
                         <Sparkles size={18} /> GO / EMPEZAR AHORA
                       </button>
-                    </div>
-
-                    {/* Annotation Bottom Left pointing to micro toggle */}
-                    <div className="absolute bottom-[2%] left-[2%] text-left max-w-[190px] bg-neutral-900/90 p-2.5 rounded-xl border border-brand-yellow/30 shadow-2xl">
-                      <p className="text-sm md:text-base leading-tight font-bold">
-                        🎙️ ACTIVA SU MICRO
-                      </p>
-                      <p className="text-xs md:text-sm text-gray-300 leading-snug mt-0.5">
-                        Presiona para dar el permiso de micrófono e iniciar el sintetizador live de tu voz.
-                      </p>
                     </div>
 
                   </div>
