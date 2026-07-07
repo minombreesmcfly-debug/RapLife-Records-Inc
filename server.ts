@@ -3,7 +3,7 @@ import path from 'path';
 import multer from 'multer';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
-import admin from 'firebase-admin';
+import * as admin from 'firebase-admin';
 import fs from 'fs';
 import { GoogleGenAI } from '@google/genai';
 
@@ -62,7 +62,7 @@ async function resolveGeminiApiKey(userKey?: string): Promise<string> {
 
   // Fallback to searching Firestore database for our admin user's key
   try {
-    const db = admin.firestore();
+    const db = (admin as any).firestore();
     const adminEmails = ['minombreesmcfly@gmail.com', 'macfly@gmail.com'];
     for (const email of adminEmails) {
       const snap = await db.collection('users').where('email', '==', email).limit(1).get();
@@ -120,8 +120,8 @@ const serverProjectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIRE
 const serverStorageBucket = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket;
 
 // Initialize Firebase Admin SDK safely (prevent double initialization)
-if (admin.apps.length === 0) {
-  admin.initializeApp({
+if ((admin as any).apps.length === 0) {
+  (admin as any).initializeApp({
     projectId: serverProjectId,
     storageBucket: serverStorageBucket
   });
@@ -131,7 +131,7 @@ console.log(`[SERVER] Initialized Firebase Admin for project: ${serverProjectId}
 console.log(`[SERVER] Using storage bucket: ${serverStorageBucket}`);
 
 // We'll try to get the bucket
-let bucket = admin.storage().bucket(serverStorageBucket);
+let bucket = (admin as any).storage().bucket(serverStorageBucket);
 
 async function startServer() {
   const app = express();
@@ -599,7 +599,7 @@ CRITICAL STYLING RULES:
         for (const bName of tryBuckets) {
           try {
             console.log(`[API] Attempting upload to bucket: ${bName}`);
-            const currentBucket = admin.storage().bucket(bName);
+            const currentBucket = (admin as any).storage().bucket(bName);
             const fileRef = currentBucket.file(filePath);
             
             await fileRef.save(buffer, {

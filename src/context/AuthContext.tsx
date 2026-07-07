@@ -8,9 +8,21 @@ interface AuthContextType {
   profile: any | null;
   loading: boolean;
   isAdmin: boolean;
+  loginWithGoogle: () => Promise<User>;
+  logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, profile: null, loading: true, isAdmin: false });
+// Import auth helpers from firebase lib
+import { signInWithGoogle, logoutUser } from '../lib/firebase';
+
+const AuthContext = createContext<AuthContextType>({ 
+  user: null, 
+  profile: null, 
+  loading: true, 
+  isAdmin: false,
+  loginWithGoogle: async () => { throw new Error("AuthProvider not ready"); },
+  logout: async () => {}
+});
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -68,8 +80,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user?.email?.toLowerCase() === 'minombreesmcfly@gmail.com' ||
     user?.email?.toLowerCase() === 'macfly@gmail.com';
 
+  const loginWithGoogle = async () => {
+    return await signInWithGoogle();
+  };
+
+  const logout = async () => {
+    await logoutUser();
+  };
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAdmin }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAdmin, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

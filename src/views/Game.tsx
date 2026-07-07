@@ -277,15 +277,15 @@ const Leaderboard = () => {
 };
 
 const CHARACTERS = [
-  { id: 'mcfly', name: 'MCFLY', subtitle: 'EMECE', description: 'Pionero de RapLife. Ágil de pies, saltos propulsados y beats cósmicos.', prefix: 'player3', avatarFallback: '#9b5de5', bulletOffsetY: 28, bulletOffsetX: 2, unlockScore: 0 },
-  { id: '2pac', name: 'Tupac', subtitle: 'Makaveli', description: 'Poeta lírico de la West Coast. Rapidez mental, pasión y estilo legendario.', prefix: 'player2', avatarFallback: '#ff4444', bulletOffsetY: 22, bulletOffsetX: 6, unlockScore: 10000 },
-  { id: 'biggie', name: 'Biggy', subtitle: 'The Notorious', description: 'Leyenda del East Coast. Peso pesado con flow insuperable.', prefix: 'player', avatarFallback: '#ffae00', bulletOffsetY: 35, bulletOffsetX: 0, unlockScore: 15000 }
+  { id: 'mcfly', name: 'MCFLY', subtitle: 'EMECE', description: 'Pionero de RapLife. Ágil de pies, saltos propulsados y beats cósmicos.', prefix: 'player3', avatarFallback: '#9b5de5', bulletOffsetY: 28, bulletOffsetX: 2, unlockScore: 10000 },
+  { id: '2pac', name: 'Tupac', subtitle: 'Makaveli', description: 'Poeta lírico de la West Coast. Rapidez mental, pasión y estilo legendario.', prefix: 'player2', avatarFallback: '#ff4444', bulletOffsetY: 22, bulletOffsetX: 6, unlockScore: 0 },
+  { id: 'biggie', name: 'Biggy', subtitle: 'The Notorious', description: 'Leyenda del East Coast. Peso pesado con flow insuperable.', prefix: 'player', avatarFallback: '#ffae00', bulletOffsetY: 35, bulletOffsetX: 0, unlockScore: 0 }
 ] as const;
 
 const GameView = () => {
   const { user, profile, isAdmin } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [selectedCharId, setSelectedCharId] = useState<'biggie' | '2pac' | 'mcfly'>('mcfly');
+  const [selectedCharId, setSelectedCharId] = useState<'biggie' | '2pac' | 'mcfly'>('2pac');
   const [showGuide, setShowGuide] = useState(false);
   const selectedCharIdRef = useRef(selectedCharId);
 
@@ -543,6 +543,7 @@ const GameView = () => {
     offsetX: 0,
     speedMultiplier: 1.0,
     lastPlatformX: 2500,
+    scoreTimer: 0,
     platforms: [
       { id: 'start-ground', x: 0, y: 460, width: 3000, height: 40, type: 'ground' }, 
       { id: 'l1', x: 500, y: 340, width: 140, height: 15, type: 'ledge' },

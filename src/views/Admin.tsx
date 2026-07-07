@@ -1140,7 +1140,9 @@ const AdminView = () => {
                   spotifyUrl: '',
                   instagramUrl: '',
                   appleMusicUrl: '',
-                  isPinned: false
+                  isPinned: false,
+                  isExclusive: true,
+                  reels: []
                 });
                 setShowArtistForm(!showArtistForm);
               }}
