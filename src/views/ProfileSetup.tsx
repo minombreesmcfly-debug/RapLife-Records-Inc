@@ -228,11 +228,11 @@ const ProfileSetupView = () => {
             <div className="flex flex-col md:flex-row gap-4 justify-center">
               <button onClick={() => setStep(1)} className="px-8 py-4 bg-white/5 text-white/50 font-bold uppercase italic rounded-xl hover:bg-white/10">ATRÁS</button>
               <button 
-                onClick={() => role === 'artist' ? setStep(3) : setStep(4)}
+                onClick={() => role === 'artist' ? setStep(3) : handleFinish(false, null)}
                 disabled={!category || submitting}
                 className="px-12 py-5 bg-brand-yellow text-black font-black italic text-xl uppercase tracking-tighter rounded-xl hover:scale-105 transition-all disabled:opacity-20"
               >
-                {role === 'artist' ? 'SELECCIONAR PLAN' : 'CONFIGURAR AVATAR'}
+                {role === 'artist' ? 'SELECCIONAR PLAN' : 'FINALIZAR REGISTRO'}
               </button>
             </div>
           </motion.div>
@@ -287,157 +287,11 @@ const ProfileSetupView = () => {
             <div className="flex flex-col md:flex-row gap-4 justify-center">
               <button onClick={() => setStep(2)} className="px-8 py-4 bg-white/5 text-white/50 font-bold uppercase italic rounded-xl hover:bg-white/10">ATRÁS</button>
               <button 
-                onClick={() => setStep(4)}
+                onClick={() => handleFinish(false, null)}
                 disabled={submitting}
                 className="px-12 py-5 bg-brand-yellow text-black font-black italic text-xl uppercase tracking-tighter rounded-xl hover:scale-105 transition-all disabled:opacity-20"
               >
-                CONFIGURAR AVATAR
-              </button>
-            </div>
-          </motion.div>
-        )}
-
-        {step === 4 && (
-          <motion.div
-            key="step4"
-            initial={{ x: 20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -20, opacity: 0 }}
-            className="space-y-8 w-full max-w-2xl mx-auto"
-          >
-            <div className="space-y-4">
-              <span className="px-3.5 py-1 bg-brand-yellow/10 border border-brand-yellow/30 text-brand-yellow text-[10px] font-black uppercase tracking-widest rounded-full inline-flex items-center gap-1.5">
-                <Sparkles size={11} /> ECOSISTEMA DIGITAL RAPLIFE
-              </span>
-              <h2 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter leading-none">¿CREAR TU AVATAR RAPLIFE?</h2>
-              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest max-w-lg mx-auto">
-                Crea tu versión digital, únete a la red y forma parte de nuestro ecosistema interactivo de artistas en 3D.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
-              {/* ACCEPT CARD */}
-              <button
-                onClick={() => setAcceptedEcosystem(true)}
-                className={`p-6 rounded-3xl border-3 text-left transition-all flex flex-col gap-3 relative overflow-hidden group ${acceptedEcosystem ? 'border-brand-yellow bg-brand-yellow/5' : 'border-white/5 bg-white/[0.01]'}`}
-              >
-                <div className={`p-3 rounded-xl w-fit ${acceptedEcosystem ? 'bg-brand-yellow text-black' : 'bg-white/5 text-white/50'}`}>
-                  <Sparkles size={20} />
-                </div>
-                <div>
-                  <h4 className="font-black italic uppercase tracking-tight text-white mb-1 text-sm">SÍ, QUIERO MI AVATAR DIGITAL</h4>
-                  <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-tight leading-relaxed">
-                    Únete a RapLife. Podrás subir tu foto, cambiarle de ropa con IA usando outfits exclusivos de RapLife y aparecer en el feed de avatares.
-                  </p>
-                </div>
-              </button>
-
-              {/* DECLINE/SKIP CARD */}
-              <button
-                onClick={() => {
-                  setAcceptedEcosystem(false);
-                  setAvatarSelfie(null);
-                }}
-                className={`p-6 rounded-3xl border-3 text-left transition-all flex flex-col gap-3 relative overflow-hidden group ${!acceptedEcosystem ? 'border-red-500/50 bg-red-500/5' : 'border-white/5 bg-white/[0.01]'}`}
-              >
-                <div className={`p-3 rounded-xl w-fit ${!acceptedEcosystem ? 'bg-red-500 text-black' : 'bg-white/5 text-white/50'}`}>
-                  <X size={20} />
-                </div>
-                <div>
-                  <h4 className="font-black italic uppercase tracking-tight text-white mb-1 text-sm">NO / HACERLO MÁS TARDE</h4>
-                  <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-tight leading-relaxed">
-                    Crear perfil estándar sin versión digital. Puedes omitirlo y configurarlo en cualquier momento desde el menú de la radio.
-                  </p>
-                </div>
-              </button>
-            </div>
-
-            {/* CONDITIONAL PHOTO UPLOADER IF ACCEPTED */}
-            {acceptedEcosystem && (
-              <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-black/30 border-2 border-dashed border-white/10 rounded-3xl p-6 text-left space-y-4"
-              >
-                <h4 className="text-xs font-black italic uppercase text-brand-yellow flex items-center gap-1.5">
-                  <ImageIcon size={14} /> PASO 1: SUBE TU SELFI O FOTO REAL
-                </h4>
-                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide leading-relaxed">
-                  Para poder vestir los outfits exclusivos, necesitamos tu foto base. La IA cambiará solo tu ropa manteniendo tu misma pose, cara y ángulo.
-                </p>
-
-                {!avatarSelfie ? (
-                  <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all bg-white/[0.01] hover:bg-white/[0.03] ${
-                      isDragOver ? 'border-brand-yellow bg-brand-yellow/5' : 'border-white/10 hover:border-brand-yellow/40'
-                    }`}
-                  >
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      accept="image/*" 
-                      className="hidden" 
-                      onChange={handleFileSelect} 
-                    />
-                    <Upload size={24} className="text-gray-500 mb-2 group-hover:scale-105 transition-transform" />
-                    <p className="text-[10px] font-black uppercase text-gray-300">ARRASTRA TU FOTO O HAZ CLIC AQUÍ</p>
-                    <p className="text-[8px] text-gray-600 uppercase font-bold mt-1">Recomendamos una foto clara de frente</p>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-4 bg-black/40 p-4 rounded-2xl border border-brand-yellow/20">
-                    <div className="w-16 h-16 rounded-xl overflow-hidden border border-white/10 bg-black flex-shrink-0">
-                      <img src={avatarSelfie} className="w-full h-full object-cover" alt="Selfie preview" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-[10px] text-brand-green font-black uppercase tracking-widest flex items-center gap-1">
-                        <Check size={12} /> ¡FOTO SELECCIONADA CON ÉXITO!
-                      </p>
-                      <p className="text-[9px] text-gray-500 uppercase font-bold tracking-tight mt-1">
-                        Esta foto servirá de lienzo para tu Avatar Digital en RapLife.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setAvatarSelfie(null)}
-                      className="p-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-lg transition-transform active:scale-90"
-                      title="Eliminar foto"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
-                
-                {/* Skip option for photo */}
-                {!avatarSelfie && (
-                  <div className="text-center">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        // Accept ecosystem, but skip photo for now
-                        handleFinish(true, null);
-                      }}
-                      className="text-[9px] font-black text-gray-500 hover:text-brand-yellow uppercase tracking-wider underline cursor-pointer"
-                    >
-                      Omitir foto por ahora (puedes subirla más tarde)
-                    </button>
-                  </div>
-                )}
-              </motion.div>
-            )}
-
-            {/* BUTTONS */}
-            <div className="flex flex-col md:flex-row gap-4 justify-center pt-4">
-              <button onClick={() => setStep(role === 'artist' ? 3 : 2)} className="px-8 py-4 bg-white/5 text-white/50 font-bold uppercase italic rounded-xl hover:bg-white/10">ATRÁS</button>
-              <button 
-                onClick={() => handleFinish(acceptedEcosystem, avatarSelfie)}
-                disabled={submitting}
-                className="px-12 py-5 bg-brand-yellow text-black font-black italic text-xl uppercase tracking-tighter rounded-xl hover:scale-105 transition-all disabled:opacity-20"
-              >
-                {submitting ? 'PREPARANDO UNIVERSO...' : 'FINALIZAR Y UNIRSE'}
+                FINALIZAR REGISTRO
               </button>
             </div>
           </motion.div>

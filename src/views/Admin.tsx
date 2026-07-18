@@ -155,7 +155,11 @@ const AdminView = () => {
               status
             };
           });
-        data = [...data, ...dbTracks];
+        
+        // De-duplicate by audioUrl (case-insensitive)
+        const seenUrls = new Set(data.map((t: any) => t.audioUrl.toLowerCase()));
+        const filteredDbTracks = dbTracks.filter((t: any) => t.audioUrl && !seenUrls.has(t.audioUrl.toLowerCase()));
+        data = [...data, ...filteredDbTracks];
       } catch (dbErr) {
         console.warn("[ADMIN RADIO] Approved/legacy db tracks fetch error:", dbErr);
       }
@@ -512,7 +516,7 @@ const AdminView = () => {
 
   const handleDeleteLocalRadio = async (fullName: string, id?: string) => {
     // Check if it is a database-backed track or local disk file
-    const isDbTrack = id && !fullName.endsWith('.mp3') && !fullName.endsWith('.wav') && !fullName.endsWith('.m4a') && !fullName.endsWith('.ogg');
+    const isDbTrack = id && !id.startsWith('local-radio-');
     
     if (isDbTrack) {
       if (!window.confirm(`¿Seguro que quieres eliminar el track de base de datos "${fullName}" de la radio?`)) return;
@@ -1058,7 +1062,16 @@ const AdminView = () => {
                             </button>
                           </div>
 
-                          <Music size={14} className="text-brand-yellow/70 flex-shrink-0" />
+                          <button
+                            onClick={() => {
+                              console.log("[ADMIN] Explicit play on music icon click:", track);
+                              play(track);
+                            }}
+                            className="p-1.5 text-brand-yellow hover:text-white hover:bg-brand-yellow/20 rounded-lg transition-all cursor-pointer flex-shrink-0 active:scale-95"
+                            title="Reproducir esta canción"
+                          >
+                            <Music size={14} />
+                          </button>
                           <div className="truncate animate-fadeIn">
                             <p className="font-bold truncate text-gray-300">
                               <span className="text-brand-yellow font-mono text-[10px] mr-1.5">#{idx + 1}</span>
@@ -1141,7 +1154,7 @@ const AdminView = () => {
                   instagramUrl: '',
                   appleMusicUrl: '',
                   isPinned: false,
-                  isExclusive: true,
+                  isExclusive: false,
                   reels: []
                 });
                 setShowArtistForm(!showArtistForm);

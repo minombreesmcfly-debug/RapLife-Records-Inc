@@ -3,9 +3,44 @@ import path from 'path';
 import multer from 'multer';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
-import * as admin from 'firebase-admin';
+import admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 import { GoogleGenAI } from '@google/genai';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execPromise = promisify(exec);
+
+async function ensureMp3(buffer: Buffer, originalName: string, mimetype: string): Promise<{ buffer: Buffer; fileName: string; mimetype: string }> {
+  const ext = path.extname(originalName).toLowerCase();
+  if (ext !== '.wav') {
+    return { buffer, fileName: originalName, mimetype };
+  }
+
+  const tempWav = path.join(process.cwd(), `temp_${Date.now()}_input.wav`);
+  const tempMp3 = path.join(process.cwd(), `temp_${Date.now()}_output.mp3`);
+
+  try {
+    fs.writeFileSync(tempWav, buffer);
+    await execPromise(`ffmpeg -y -i "${tempWav}" -b:a 192k "${tempMp3}"`);
+    const mp3Buffer = fs.readFileSync(tempMp3);
+    const baseName = path.basename(originalName, ext);
+    return {
+      buffer: mp3Buffer,
+      fileName: `${baseName}.mp3`,
+      mimetype: 'audio/mpeg'
+    };
+  } catch (err) {
+    console.error("[FFMPEG] Failed to transcode WAV to MP3, returning original:", err);
+    return { buffer, fileName: originalName, mimetype };
+  } finally {
+    try {
+      if (fs.existsSync(tempWav)) fs.unlinkSync(tempWav);
+      if (fs.existsSync(tempMp3)) fs.unlinkSync(tempMp3);
+    } catch (_) {}
+  }
+}
 
 // Lazy loaded Gemini API initialization
 let aiClient: GoogleGenAI | null = null;
@@ -62,7 +97,7 @@ async function resolveGeminiApiKey(userKey?: string): Promise<string> {
 
   // Fallback to searching Firestore database for our admin user's key
   try {
-    const db = (admin as any).firestore();
+    const db = getFirestore(undefined, firebaseConfig.firestoreDatabaseId || undefined);
     const adminEmails = ['minombreesmcfly@gmail.com', 'macfly@gmail.com'];
     for (const email of adminEmails) {
       const snap = await db.collection('users').where('email', '==', email).limit(1).get();
@@ -120,8 +155,8 @@ const serverProjectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIRE
 const serverStorageBucket = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket;
 
 // Initialize Firebase Admin SDK safely (prevent double initialization)
-if ((admin as any).apps.length === 0) {
-  (admin as any).initializeApp({
+if (admin.apps.length === 0) {
+  admin.initializeApp({
     projectId: serverProjectId,
     storageBucket: serverStorageBucket
   });
@@ -131,7 +166,7 @@ console.log(`[SERVER] Initialized Firebase Admin for project: ${serverProjectId}
 console.log(`[SERVER] Using storage bucket: ${serverStorageBucket}`);
 
 // We'll try to get the bucket
-let bucket = (admin as any).storage().bucket(serverStorageBucket);
+let bucket = admin.storage().bucket(serverStorageBucket);
 
 async function startServer() {
   const app = express();
@@ -149,7 +184,12 @@ async function startServer() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Static uploads serving fallback
-  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), {
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Accept-Ranges', 'bytes');
+    }
+  }));
 
   // Health check for platform probes
   app.get('/api/health', (req, res) => {
@@ -371,70 +411,87 @@ CRITICAL STYLING RULES:
     }
   });
 
-  // API to list local radio files from assets/radio
+  // API to list local radio files from assets/radio and uploads recursively
   app.get('/api/radio-local-songs', (req, res) => {
     try {
-      const devPath = path.join(process.cwd(), 'public', 'assets', 'radio');
-      const prodPath = path.join(process.cwd(), 'dist', 'assets', 'radio');
+      const devRadioPath = path.join(process.cwd(), 'public', 'assets', 'radio');
+      const prodRadioPath = path.join(process.cwd(), 'dist', 'assets', 'radio');
+      const uploadsPath = path.join(process.cwd(), 'uploads');
       
-      const uniqueFiles = new Set<string>();
-      
-      if (fs.existsSync(devPath)) {
-        try {
-          fs.readdirSync(devPath).forEach(f => uniqueFiles.add(f));
-        } catch (e) {}
-      }
-      if (fs.existsSync(prodPath)) {
-        try {
-          fs.readdirSync(prodPath).forEach(f => uniqueFiles.add(f));
-        } catch (e) {}
-      }
-
-      const files = Array.from(uniqueFiles);
+      const uniqueTracks = new Map<string, any>();
       const allowedExts = ['.mp3', '.wav', '.ogg', '.m4a'];
-      const tracks = files
-        .filter(f => allowedExts.includes(path.extname(f).toLowerCase()))
-        .map((f, i) => {
-          let statSize = 0;
-          let foundPath = '';
-          const pPath = path.join(prodPath, f);
-          const dPath = path.join(devPath, f);
-          if (fs.existsSync(pPath)) {
-            foundPath = pPath;
-          } else if (fs.existsSync(dPath)) {
-            foundPath = dPath;
-          }
-          
-          if (foundPath) {
-            try {
-              statSize = fs.statSync(foundPath).size;
-            } catch (e) {}
-          }
 
-          // Detect clean name by removing extension and formatting
-          const cleanTitle = path.basename(f, path.extname(f))
-            .replace(/[_-]/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-          
-          const fileSizeHuman = statSize > 1024 * 1024 
-            ? `${(statSize / (1024 * 1024)).toFixed(1)} MB`
-            : `${(statSize / 1024).toFixed(1)} KB`;
+      function scanDir(dirPath: string, rootDir: string, urlPrefix: string) {
+        if (!fs.existsSync(dirPath)) return;
+        const items = fs.readdirSync(dirPath);
+        items.forEach(item => {
+          const fullPath = path.join(dirPath, item);
+          let stat;
+          try {
+            stat = fs.statSync(fullPath);
+          } catch (e) {
+            return;
+          }
+          if (stat.isDirectory()) {
+            scanDir(fullPath, rootDir, urlPrefix);
+          } else {
+            const ext = path.extname(item).toLowerCase();
+            if (allowedExts.includes(ext)) {
+              // Calculate a relative path from the rootDir
+              const relativePath = path.relative(rootDir, fullPath);
+              // Normalize relative path with forward slashes for the URL
+              const normalizedRelative = relativePath.split(path.sep).join('/');
+              const audioUrl = `${urlPrefix}/${normalizedRelative.split('/').map(encodeURIComponent).join('/')}`;
+              
+              // We want unique keys by their relative path (or audioUrl)
+              // Let's key by normalizedRelative
+              if (!uniqueTracks.has(normalizedRelative)) {
+                // Detect artist and title from filename
+                const baseNoExt = path.basename(item, ext);
+                let title = baseNoExt.replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
+                let artistName = 'RAPLIFE RADIO';
 
-          return {
-            id: `local-radio-${i}-${encodeURIComponent(f)}`,
-            artistId: 'local-radio-artist',
-            artistName: statSize === 0 ? 'RAPLIFE RADIO (VACÍO - 0 bytes)' : 'RAPLIFE RADIO',
-            title: cleanTitle,
-            audioUrl: `/assets/radio/${encodeURIComponent(f)}`,
-            coverUrl: '/assets/player_idle.png',
-            isRadioInterstitial: true,
-            size: statSize,
-            fullName: f,
-            fileSizeHuman: fileSizeHuman
-          };
+                if (baseNoExt.includes(' - ')) {
+                  const parts = baseNoExt.split(' - ');
+                  title = parts[0].trim();
+                  artistName = parts[1].trim();
+                } else if (baseNoExt.includes('-')) {
+                  const parts = baseNoExt.split('-');
+                  title = parts[0].trim();
+                  artistName = parts[1].trim();
+                }
+
+                const statSize = stat.size;
+                const fileSizeHuman = statSize > 1024 * 1024 
+                  ? `${(statSize / (1024 * 1024)).toFixed(1)} MB`
+                  : `${(statSize / 1024).toFixed(1)} KB`;
+
+                uniqueTracks.set(normalizedRelative, {
+                  id: `local-radio-${uniqueTracks.size}-${encodeURIComponent(normalizedRelative)}`,
+                  artistId: 'local-radio-artist',
+                  artistName: statSize === 0 ? `${artistName} (VACÍO - 0 bytes)` : artistName,
+                  title: title,
+                  audioUrl: audioUrl,
+                  coverUrl: '/assets/player_idle.png',
+                  isRadioInterstitial: true,
+                  size: statSize,
+                  fullName: normalizedRelative,
+                  fileSizeHuman: fileSizeHuman
+                });
+              }
+            }
+          }
         });
+      }
 
+      // Scan radio assets
+      scanDir(devRadioPath, devRadioPath, '/assets/radio');
+      scanDir(prodRadioPath, prodRadioPath, '/assets/radio');
+      
+      // Scan uploads
+      scanDir(uploadsPath, uploadsPath, '/uploads');
+
+      const tracks = Array.from(uniqueTracks.values());
       res.json(tracks);
     } catch (err: any) {
       console.error('[API] Error listing local radio files:', err);
@@ -449,14 +506,15 @@ CRITICAL STYLING RULES:
   });
 
   // API to upload local radio files directly to public/assets/radio
-  app.post('/api/upload-radio-local', upload.single('track'), (req: any, res: any) => {
+  app.post('/api/upload-radio-local', upload.single('track'), async (req: any, res: any) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'No se recibió ningún archivo de audio' });
       }
-      const originalName = req.file.originalname;
+      
+      const { buffer, fileName, mimetype } = await ensureMp3(req.file.buffer, req.file.originalname, req.file.mimetype);
       const allowedExts = ['.mp3', '.wav', '.ogg', '.m4a'];
-      const fileExt = path.extname(originalName).toLowerCase();
+      const fileExt = path.extname(fileName).toLowerCase();
       
       if (!allowedExts.includes(fileExt)) {
         return res.status(400).json({ error: 'Formato de audio no permitido. Usa MP3, WAV, OGG o M4A' });
@@ -474,45 +532,85 @@ CRITICAL STYLING RULES:
       }
 
       // Save to both
-      const devDestination = path.join(devPath, originalName);
-      const prodDestination = path.join(prodPath, originalName);
+      const devDestination = path.join(devPath, fileName);
+      const prodDestination = path.join(prodPath, fileName);
       
-      fs.writeFileSync(devDestination, req.file.buffer);
-      fs.writeFileSync(prodDestination, req.file.buffer);
+      fs.writeFileSync(devDestination, buffer);
+      fs.writeFileSync(prodDestination, buffer);
 
       console.log(`[API] Guardado archivo de radio local con éxito en: ${devDestination} y ${prodDestination}`);
-      res.json({ success: true, fileName: originalName });
+      res.json({ success: true, fileName: fileName });
     } catch (err: any) {
       console.error('[API] Error guardando archivo local de radio:', err);
       res.status(500).json({ error: err.message || 'Error al guardar archivo local de radio' });
     }
   });
 
-  // API to delete local radio files from assets/radio
-  app.delete('/api/delete-radio-local', (req: any, res: any) => {
+  // API to delete local radio files from assets/radio and uploads/
+  app.delete('/api/delete-radio-local', async (req: any, res: any) => {
     try {
       const { fileName } = req.body;
       if (!fileName) {
         return res.status(400).json({ error: 'Nombre de archivo requerido' });
       }
 
-      const devPath = path.join(process.cwd(), 'public', 'assets', 'radio', fileName);
-      const prodPath = path.join(process.cwd(), 'dist', 'assets', 'radio', fileName);
+      const pathsToCheck = [
+        path.join(process.cwd(), 'public', 'assets', 'radio', fileName),
+        path.join(process.cwd(), 'dist', 'assets', 'radio', fileName),
+        path.join(process.cwd(), 'uploads', fileName),
+        path.join(process.cwd(), 'uploads', 'tracks', fileName)
+      ];
 
       let deleted = false;
-      if (fs.existsSync(devPath)) {
-        fs.unlinkSync(devPath);
-        deleted = true;
+      for (const p of pathsToCheck) {
+        if (fs.existsSync(p)) {
+          fs.unlinkSync(p);
+          deleted = true;
+          console.log(`[API] Deleted local file path: ${p}`);
+        }
       }
-      if (fs.existsSync(prodPath)) {
-        fs.unlinkSync(prodPath);
-        deleted = true;
+
+      // Also clean up any matching database records in Firestore tracks collection
+      try {
+        const firestoreDb = getFirestore(undefined, firebaseConfig.firestoreDatabaseId || undefined);
+        const tracksRef = firestoreDb.collection('tracks');
+        
+        // Match standard relative URLs or decoded matches
+        const matchUrls = [
+          `/uploads/${fileName}`,
+          `/assets/radio/${fileName}`,
+          `/uploads/tracks/${fileName}`,
+          `/uploads/${decodeURIComponent(fileName)}`,
+          `/assets/radio/${decodeURIComponent(fileName)}`
+        ];
+
+        for (const url of matchUrls) {
+          const snapshot = await tracksRef.where('audioUrl', '==', url).get();
+          for (const doc of snapshot.docs) {
+            await doc.ref.delete();
+            console.log(`[API] Deleted matching Firestore track document: ${doc.id} for url: ${url}`);
+          }
+        }
+
+        // Wildcard / substring scan of the collection for custom or absolute URLs containing the file name
+        const allSnapshot = await tracksRef.get();
+        for (const doc of allSnapshot.docs) {
+          const docAudioUrl = doc.get('audioUrl') || '';
+          if (docAudioUrl.toLowerCase().includes(fileName.toLowerCase()) || 
+              docAudioUrl.toLowerCase().includes(decodeURIComponent(fileName).toLowerCase())) {
+            await doc.ref.delete();
+            console.log(`[API] Deleted matching Firestore track document by substring match: ${doc.id} (${docAudioUrl})`);
+          }
+        }
+      } catch (dbErr: any) {
+        console.warn('[API] Could not delete matching Firestore track document:', dbErr.message);
       }
 
       if (deleted) {
         res.json({ success: true });
       } else {
-        res.status(404).json({ error: 'Archivo no encontrado' });
+        // Even if local file not found on disk, we consider it processed successfully to clean up stale entries
+        res.json({ success: true, message: 'Limpieza de registro procesada con éxito' });
       }
     } catch (err: any) {
       console.error('[API] Error eliminando archivo local de radio:', err);
@@ -599,7 +697,7 @@ CRITICAL STYLING RULES:
         for (const bName of tryBuckets) {
           try {
             console.log(`[API] Attempting upload to bucket: ${bName}`);
-            const currentBucket = (admin as any).storage().bucket(bName);
+            const currentBucket = admin.storage().bucket(bName);
             const fileRef = currentBucket.file(filePath);
             
             await fileRef.save(buffer, {
@@ -644,11 +742,16 @@ CRITICAL STYLING RULES:
 
       // 1. Upload Track
       const trackFile = files.track[0];
-      const trackExt = trackFile.originalname.split('.').pop() || 'mp3';
+      const { buffer: processedBuffer, fileName: processedName, mimetype: processedMime } = await ensureMp3(
+        trackFile.buffer,
+        trackFile.originalname,
+        trackFile.mimetype || 'audio/mpeg'
+      );
+      const trackExt = processedName.split('.').pop() || 'mp3';
       const trackPath = `tracks/${userId}/${Date.now()}.${trackExt}`;
       
       console.log(`[API] Uploading track: ${trackPath}`);
-      const audioUrl = await uploadWithFallback(trackPath, trackFile.buffer, trackFile.mimetype || 'audio/mpeg');
+      const audioUrl = await uploadWithFallback(trackPath, processedBuffer, processedMime);
       console.log(`[API] Audio URL generated: ${audioUrl}`);
 
       // 2. Upload Cover (Optional)
@@ -688,8 +791,14 @@ CRITICAL STYLING RULES:
   // Serve uploaded local radio assets directly (Failsafe fallback between dist and public folders)
   const radioDevPath = path.join(process.cwd(), 'public', 'assets', 'radio');
   const radioProdPath = path.join(process.cwd(), 'dist', 'assets', 'radio');
-  app.use('/assets/radio', express.static(radioProdPath));
-  app.use('/assets/radio', express.static(radioDevPath));
+  const staticOptions = {
+    setHeaders: (res: any) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Accept-Ranges', 'bytes');
+    }
+  };
+  app.use('/assets/radio', express.static(radioProdPath, staticOptions));
+  app.use('/assets/radio', express.static(radioDevPath, staticOptions));
 
   // Handle SPA and Vite
   if (process.env.NODE_ENV !== 'production') {

@@ -44,7 +44,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [playlist, setPlaylist] = useState<Track[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
+  const skipTimeoutRef = useRef<any>(null);
   const [songsPlayedCount, setSongsPlayedCount] = useState(0);
+  const trackFailureCountsRef = useRef<Map<string, number>>(new Map());
 
   // Refs for tracking state inside stale event handler closures
   const statesRef = useRef({
@@ -164,35 +166,63 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  useEffect(() => {
-    audioRef.current = new Audio();
-    audioRef.current.onended = () => {
+  const setupAudioListeners = (audio: HTMLAudioElement) => {
+    audio.onended = () => {
       handleTrackEnd();
     };
-    audioRef.current.onerror = (e) => {
-      const err = audioRef.current?.error;
-      console.error("[RADIO] Audio element error occurred:", err?.code, err?.message);
-      // Self-healing radio: auto-skip to the next track in queue after a short delay so play doesn't stall
-      setTimeout(() => {
-        console.log("[RADIO] Auto-skipping to the next track due to playback error...");
-        nextTrack();
-      }, 2500);
-    };
-    audioRef.current.ontimeupdate = () => {
-      if (audioRef.current) {
-        setCurrentTime(audioRef.current.currentTime);
+
+    audio.onerror = (e) => {
+      const err = audio.error;
+      const failedSrc = audio.src || '';
+      
+      // If there is no error object, or if it is an aborted load (code 1), do NOT trigger auto-skip.
+      if (!err || err.code === 1) {
+        return;
+      }
+      
+      console.error("[RADIO] Audio element error occurred:", err.code, err.message, "for source:", failedSrc);
+      
+      // Implement a circuit breaker / failure retry logic
+      const normFailed = failedSrc.toLowerCase().trim();
+      const failCount = (trackFailureCountsRef.current.get(normFailed) || 0) + 1;
+      trackFailureCountsRef.current.set(normFailed, failCount);
+
+      if (skipTimeoutRef.current) {
+        clearTimeout(skipTimeoutRef.current);
+      }
+      
+      // If it failed more than twice, auto-skip. Otherwise, retry playing once after a tiny delay.
+      if (failCount >= 2) {
+        console.warn(`[RADIO] Source ${failedSrc} failed ${failCount} times. Auto-skipping to avoid loop.`);
+        skipTimeoutRef.current = setTimeout(() => {
+          nextTrack();
+        }, 2000);
+      } else {
+        console.log(`[RADIO] Source ${failedSrc} failed once. Retrying play in 1.5s...`);
+        skipTimeoutRef.current = setTimeout(() => {
+          audio.load();
+          audio.play().catch(pe => console.warn("[RADIO] Retry play failed:", pe.message));
+        }, 1500);
       }
     };
-    audioRef.current.ondurationchange = () => {
-      if (audioRef.current) {
-        setDuration(audioRef.current.duration || 0);
-      }
+
+    audio.ontimeupdate = () => {
+      setCurrentTime(audio.currentTime);
     };
-    audioRef.current.onloadedmetadata = () => {
-      if (audioRef.current) {
-        setDuration(audioRef.current.duration || 0);
-      }
+
+    audio.ondurationchange = () => {
+      setDuration(audio.duration || 0);
     };
+
+    audio.onloadedmetadata = () => {
+      setDuration(audio.duration || 0);
+    };
+  };
+
+  useEffect(() => {
+    const audio = new Audio();
+    audioRef.current = audio;
+    setupAudioListeners(audio);
 
     // Auto-load an initial track and autoplay
     const loadInitialTrack = async () => {
@@ -230,7 +260,43 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 status
               } as Track & { status: string };
             });
-          locals = [...locals, ...dbTracks];
+          
+          // Premium de-duplication by both normalized URL and normalized Title
+          const normalizeUrl = (u: string) => {
+            if (!u) return '';
+            let decoded = decodeURIComponent(u).toLowerCase().trim();
+            if (decoded.startsWith('/')) {
+              decoded = decoded.slice(1);
+            }
+            return decoded;
+          };
+
+          const seenNormalizedUrls = new Set<string>();
+          const seenNormalizedTitles = new Set<string>();
+          const deDuplicatedLocals: Track[] = [];
+
+          const addTrackUnique = (t: Track) => {
+            const normUrl = normalizeUrl(t.audioUrl || '');
+            const normTitle = (t.title || '').toLowerCase().trim();
+            
+            if (normUrl && seenNormalizedUrls.has(normUrl)) {
+              return;
+            }
+            if (normTitle && seenNormalizedTitles.has(normTitle)) {
+              if (normTitle !== '') {
+                return;
+              }
+            }
+
+            if (normUrl) seenNormalizedUrls.add(normUrl);
+            if (normTitle) seenNormalizedTitles.add(normTitle);
+            deDuplicatedLocals.push(t);
+          };
+
+          locals.forEach(addTrackUnique);
+          dbTracks.forEach(addTrackUnique);
+
+          locals = deDuplicatedLocals;
         } catch (dbErr) {
           console.warn("[RADIO] Approved/legacy db tracks fetch error:", dbErr);
         }
@@ -337,6 +403,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         if (initial) {
+          if (skipTimeoutRef.current) {
+            clearTimeout(skipTimeoutRef.current);
+            skipTimeoutRef.current = null;
+          }
           setCurrentTrack(initial);
           setPlaylist(prev => {
             if (prev.length === 0) {
@@ -417,14 +487,21 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       let currentIndex = -1;
       
       if (currentTrackVal) {
-        currentIndex = playlistVal.findIndex(t => 
-          t.fullName === currentTrackVal.fullName || 
-          t.audioUrl === currentTrackVal.audioUrl ||
-          (currentTrackVal.audioUrl && (currentTrackVal.audioUrl.endsWith('/' + t.fullName) || currentTrackVal.audioUrl.endsWith('/' + encodeURIComponent(t.fullName || ''))))
-        );
+        currentIndex = playlistVal.findIndex(t => {
+          const tDecoded = decodeURIComponent(t.audioUrl || '').toLowerCase();
+          const curDecoded = decodeURIComponent(currentTrackVal.audioUrl || '').toLowerCase();
+          return t.fullName === currentTrackVal.fullName || 
+                 t.audioUrl === currentTrackVal.audioUrl ||
+                 tDecoded === curDecoded ||
+                 (currentTrackVal.audioUrl && (
+                   currentTrackVal.audioUrl.endsWith('/' + t.fullName) || 
+                   currentTrackVal.audioUrl.endsWith('/' + encodeURIComponent(t.fullName || '')) ||
+                   curDecoded.endsWith('/' + (t.fullName || '').toLowerCase())
+                 ));
+        });
       }
       
-      const nextIndex = currentIndex !== -1 ? (currentIndex + 1) % playlistVal.length : 0;
+      let nextIndex = currentIndex !== -1 ? (currentIndex + 1) % playlistVal.length : 0;
       const nextTrackObj = playlistVal[nextIndex];
       console.log(`[RADIO] Playlist transition: moving to index ${nextIndex + 1}/${playlistVal.length} (${nextTrackObj.title || nextTrackObj.fullName})`);
       play(nextTrackObj);
@@ -444,27 +521,59 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const play = (track: Track) => {
-    if (audioRef.current) {
-      // Restore volume to 100% on fresh play action if it was faded to 0 (to stay self-healing and audible)
-      if (audioRef.current.volume === 0 || volume === 0) {
-        audioRef.current.volume = 1.0;
-        setVolumeState(1.0);
-      }
+    if (skipTimeoutRef.current) {
+      clearTimeout(skipTimeoutRef.current);
+      skipTimeoutRef.current = null;
+    }
 
-      audioRef.current.src = track.audioUrl;
-      const promise = audioRef.current.play();
-      if (promise !== undefined) {
-        playPromiseRef.current = promise;
-        promise.catch(e => {
-          if (e.name !== 'AbortError') {
-            console.warn("Play error:", e);
-          }
-        });
-      }
-      setCurrentTrack(track);
-      setCurrentTime(0);
-      setDuration(0);
-      setIsPlaying(true);
+    // User is manually playing this track, clear any recorded failures for it
+    const normUrl = (track.audioUrl || '').toLowerCase().trim();
+    trackFailureCountsRef.current.delete(normUrl);
+    if (normUrl.startsWith('/')) {
+      trackFailureCountsRef.current.delete(normUrl.slice(1));
+    } else {
+      trackFailureCountsRef.current.delete('/' + normUrl);
+    }
+
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+      } catch (e) {}
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current.ontimeupdate = null;
+      audioRef.current.ondurationchange = null;
+      audioRef.current.onloadedmetadata = null;
+    }
+
+    const audio = new Audio();
+    audioRef.current = audio;
+    audio.muted = isMuted;
+
+    // Restore volume to 100% on fresh play action if it was faded to 0 (to stay self-healing and audible)
+    if (volume === 0) {
+      audio.volume = 1.0;
+      setVolumeState(1.0);
+    } else {
+      audio.volume = volume;
+    }
+
+    setupAudioListeners(audio);
+
+    audio.src = track.audioUrl;
+    setCurrentTrack(track);
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(true);
+
+    const promise = audio.play();
+    if (promise !== undefined) {
+      playPromiseRef.current = promise;
+      promise.catch(e => {
+        if (e.name !== 'AbortError') {
+          console.warn("Play error:", e);
+        }
+      });
     }
   };
 
@@ -486,7 +595,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         if (currentTrack) {
           const currentSrc = audioRef.current.src || '';
-          if (!currentSrc || currentSrc === '' || !currentSrc.endsWith(currentTrack.audioUrl)) {
+          const decodedSrc = decodeURIComponent(currentSrc);
+          const decodedTrackUrl = decodeURIComponent(currentTrack.audioUrl);
+          
+          if (!currentSrc || currentSrc === '' || (!decodedSrc.endsWith(decodedTrackUrl) && !currentSrc.endsWith(currentTrack.audioUrl))) {
             audioRef.current.src = currentTrack.audioUrl;
           }
         }

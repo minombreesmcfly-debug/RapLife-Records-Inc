@@ -277,15 +277,15 @@ const Leaderboard = () => {
 };
 
 const CHARACTERS = [
-  { id: 'mcfly', name: 'MCFLY', subtitle: 'EMECE', description: 'Pionero de RapLife. Ágil de pies, saltos propulsados y beats cósmicos.', prefix: 'player3', avatarFallback: '#9b5de5', bulletOffsetY: 28, bulletOffsetX: 2, unlockScore: 10000 },
-  { id: '2pac', name: 'Tupac', subtitle: 'Makaveli', description: 'Poeta lírico de la West Coast. Rapidez mental, pasión y estilo legendario.', prefix: 'player2', avatarFallback: '#ff4444', bulletOffsetY: 22, bulletOffsetX: 6, unlockScore: 0 },
-  { id: 'biggie', name: 'Biggy', subtitle: 'The Notorious', description: 'Leyenda del East Coast. Peso pesado con flow insuperable.', prefix: 'player', avatarFallback: '#ffae00', bulletOffsetY: 35, bulletOffsetX: 0, unlockScore: 0 }
+  { id: 'mcfly', name: 'MCFLY', subtitle: 'EMECE', description: 'Pionero de RapLife. Ágil de pies, saltos propulsados y beats cósmicos.', prefix: 'player3', avatarFallback: '#9b5de5', bulletOffsetY: 28, bulletOffsetX: 2, unlockScore: 0 },
+  { id: '2pac', name: 'Tupac', subtitle: 'Makaveli', description: 'Poeta lírico de la West Coast. Rapidez mental, pasión y estilo legendario.', prefix: 'player2', avatarFallback: '#ff4444', bulletOffsetY: 22, bulletOffsetX: 6, unlockScore: 10000 },
+  { id: 'biggie', name: 'Biggy', subtitle: 'The Notorious', description: 'Leyenda del East Coast. Peso pesado con flow insuperable.', prefix: 'player', avatarFallback: '#ffae00', bulletOffsetY: 35, bulletOffsetX: 0, unlockScore: 15000 }
 ] as const;
 
 const GameView = () => {
   const { user, profile, isAdmin } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [selectedCharId, setSelectedCharId] = useState<'biggie' | '2pac' | 'mcfly'>('2pac');
+  const [selectedCharId, setSelectedCharId] = useState<'biggie' | '2pac' | 'mcfly'>('mcfly');
   const [showGuide, setShowGuide] = useState(false);
   const selectedCharIdRef = useRef(selectedCharId);
 

@@ -397,11 +397,11 @@ export default function SponsoredCarousel() {
                   {activeArtist.id === 'placeholder_join' ? (
                     profile ? (
                       <Link
-                        to="/studio"
+                        to="/upload"
                         className="flex items-center justify-center gap-1.5 bg-brand-yellow hover:bg-yellow-400 text-black font-black uppercase text-[9px] tracking-wider px-4 py-2.5 rounded-lg transition-all scale-95 hover:scale-100 cursor-pointer shadow-[0_4px_12px_rgba(247,250,5,0.25)]"
                       >
-                        <Sparkles size={11} />
-                        <span>IR A ESTUDIO DE AVATAR</span>
+                        <Disc size={11} className="animate-pulse" />
+                        <span>SUBIR TRACK</span>
                       </Link>
                     ) : (
                       <button
