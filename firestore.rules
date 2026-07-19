@@ -56,7 +56,7 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'displayName', 'photoURL', 'bio', 'spotifyUrl', 'appleMusicUrl', 'instagramUrl', 
             'points', 'highScore', 'acceptedEcosystem', 'updatedAt', 'avatarSelfieUrl', 
-            'avatarUrl', 'hasAvatar', 'geminiApiKey', 'category', 'plan'
+            'avatarUrl', 'hasAvatar', 'geminiApiKey', 'category', 'plan', 'isSubscribed', 'adminPointsSeeded'
           ])
         )
       );
